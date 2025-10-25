@@ -1,0 +1,20 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': { 'fontFamily': 'Inter, Arial, sans-serif', 'fontSize': '14px' }
+}}%%
+mindmap
+    root((AARIS Data Architecture — Firestore))
+        Collections
+            Submission Collection
+                Path: artifacts / <appId> / public / data / submissions
+                Data Points Per Submission
+                    - Manuscript Content (parsed text / JSON)
+                    - Original File Metadata (PDF, DOCX)
+                    - Final Review Report (Markdown, PDF)
+            Agent State Collection
+                Path: artifacts / <appId> / public / data / agent_state
+                Data Points Per Submission
+                    - Orchestrator Plan (multi-step decomposition)
+                    - Agent Status (running, completed)
+                    - Agent Critique Objects (scores, findings from specialist agents)
+                    - Coordination / Timestamps

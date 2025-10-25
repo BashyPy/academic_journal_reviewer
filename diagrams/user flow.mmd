@@ -1,0 +1,32 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': { 
+    'fontFamily': 'Inter, Arial, sans-serif', 
+    'fontSize': '12px', 
+    'primaryColor': '#f0f8ff',
+    'primaryTextColor': '#2c3e50',
+    'primaryBorderColor': '#3498db',
+    'lineColor': '#34495e'
+  },
+  'flowchart': { 'htmlLabels': true, 'curve': 'basis', 'padding': 20 }
+}}%%
+
+graph TB
+    A["Journal Editor"] -->|"1. Upload Manuscript"| B["UI / API Gateway"]
+    B -->|"2. Ingestion: Parse & Save"| C["Firestore: Submissions"]
+    C --> D["Trigger Orchestrator Agent"]
+
+    subgraph Review["Agent Review"]
+        D -->|"3. Delegate Tasks"| E["Specialist Agents\n(Parallel Execution)"]
+        E -->|"4. Coordinate & Reflect"| F["Firestore: Agent State"]
+        F --> G["Synthesis Agent\n(Consolidation)"]
+        G -->|"5. Generate & Save Final Report"| C
+    end
+
+    C --> H["UI: Notification — Report Ready"]
+    H -->|"6. Review Agent Report & Make Decision"| A
+    A -->|"Decision (Accept / Revise / Reject)"| I["Journal Workflow System"]
+
+    classDef actor fill:#e8f2ff,stroke:#3b6ea5,stroke-width:1px;
+    class A actor;
+    class I actor;

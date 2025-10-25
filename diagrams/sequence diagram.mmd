@@ -1,0 +1,36 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'Arial', 'fontSize': '16px'}}}%%
+sequenceDiagram
+    actor Editor
+    participant UI
+    participant Gateway
+    participant DB as Firestore (Memory & State)
+    participant Orch as Orchestrator Agent (Planner)
+    participant Specs as Specialist Agents (Parallel)
+    participant Synth as Synthesis Agent
+
+    Editor->>UI: 1. Upload Manuscript
+    UI->>Gateway: 2. Submit & Trigger
+    Gateway->>DB: 3. Save Manuscript (Initial Submission)
+    Gateway->>Orch: 4. Activate Orchestrator
+
+    Orch->>Orch: 5. Generate Dynamic Plan (Planning/Reasoning)
+    Orch->>DB: 6. Push 4 Parallel Tasks (Agent State)
+
+    par Parallel Execution Loop
+        Specs->>DB: 7. Read Task/Context
+        Specs->>Specs: 8. Execute Logic & Reflection
+        Specs->>DB: 9. Save Structured Critique (Task_Completed)
+    and
+        Specs-->>Specs: ... 3 other Agents run concurrently ...
+    end
+
+    loop Monitor DB until 4 tasks complete
+        Orch->>DB: 10. Check Task Status
+    end
+
+    Orch->>Synth: 11. Activate Synthesis Agent
+    Synth->>DB: 12. Load All Critiques
+    Synth->>Synth: 13. Compile & Recommend
+    Synth->>DB: 14. Save Final Report (Submissions)
+    DB->>UI: 15. Notify UI of Completion
+    UI->>Editor: 16. Display Review Report

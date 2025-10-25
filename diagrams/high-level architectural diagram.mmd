@@ -1,0 +1,37 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'Arial', 'fontSize': '16px'}}}%%
+graph TD
+    subgraph "Frontend"
+        A["Journal Editor (Human)"] --> B["User Interface (UI)"]
+    end
+
+    subgraph "Backend Services"
+        B -->|"Submit & Load"| C["API Gateway & Ingestion"]
+        C -->|"Trigger"| D["Agent Orchestrator - The Planner"]
+    end
+
+    subgraph "Agentic System (MAS)"
+        D -->|"Task Delegation"| E1["Methodology & Stats Agent"]
+        D -->|"Task Delegation"| E2["Literature & Novelty Agent"]
+        D -->|"Task Delegation"| E3["Clarity & Presentation Agent"]
+        D -->|"Task Delegation"| E4["Integrity & Ethics Agent"]
+        D -->|"Consolidate"| G["Synthesis Agent"]
+    end
+
+    subgraph "Data & Persistence"
+        C -->|"Save Manuscript"| F["Memory & State (Firestore)"]
+        E1 -->|"Write Results"| F
+        E2 -->|"Write Results"| F
+        E3 -->|"Write Results"| F
+        E4 -->|"Write Results"| F
+        G -->|"Write Final Report"| F
+    end
+
+    subgraph "External Tools (The Environment)"
+        E2 -->|"Check Lit."| H1["Google Search / Citation DB"]
+        E4 -->|"Check Compliance"| H2["Plagiarism API / CoI Check"]
+    end
+
+    F -->|"Load Final Report"| B
+    style D fill:#aaffcc,stroke:#333
+    style G fill:#ffccaa,stroke:#333
+    style F fill:#cccccc,stroke:#333
