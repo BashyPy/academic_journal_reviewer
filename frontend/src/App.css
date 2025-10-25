@@ -1,0 +1,144 @@
+.App {
+  text-align: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.App-header {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+}
+
+.App-header h1 {
+  color: #2c3e50;
+  margin: 0 0 10px 0;
+}
+
+.App-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  justify-content: center;
+}
+
+.App-nav button {
+  padding: 10px 20px;
+  border: 2px solid #3498db;
+  background: white;
+  color: #3498db;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.App-nav button:hover {
+  background: #3498db;
+  color: white;
+}
+
+.App-nav button.active {
+  background: #3498db;
+  color: white;
+}
+
+.App-content {
+  min-height: 400px;
+}
+
+.upload-form {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 30px;
+  border: 2px dashed #3498db;
+  border-radius: 10px;
+  background: #f8f9fa;
+}
+
+.file-input {
+  margin: 20px 0;
+}
+
+.file-input input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.upload-button {
+  background: #27ae60;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.upload-button:hover {
+  background: #219a52;
+}
+
+.upload-button:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.status-container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  margin: 10px 0;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background: white;
+}
+
+.status-pending { border-left: 4px solid #f39c12; }
+.status-running { border-left: 4px solid #3498db; }
+.status-completed { border-left: 4px solid #27ae60; }
+.status-failed { border-left: 4px solid #e74c3c; }
+
+.report-container {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.report-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  line-height: 1.6;
+}
+
+.report-content h1, .report-content h2, .report-content h3 {
+  color: #2c3e50;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  font-size: 18px;
+  color: #7f8c8d;
+}
+
+.error {
+  color: #e74c3c;
+  background: #fdf2f2;
+  padding: 15px;
+  border-radius: 5px;
+  border: 1px solid #e74c3c;
+}
