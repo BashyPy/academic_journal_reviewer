@@ -70,7 +70,13 @@ class OrchestratorAgent:
 
     async def execute_specialist_agents(self, task_ids: List[str]):
         async def execute_task(task_id: str):
-            task_doc = await mongodb_service.agent_tasks.find_one({"_id": task_id})
+            from bson import ObjectId
+
+            task_doc = await mongodb_service.agent_tasks.find_one(
+                {"_id": ObjectId(task_id)}
+            )
+            if not task_doc:
+                raise ValueError(f"Task {task_id} not found")
             task_data = task_doc
 
             agent_type = AgentType(task_data["agent_type"])
@@ -103,21 +109,18 @@ class OrchestratorAgent:
 
         await asyncio.gather(*[execute_task(task_id) for task_id in task_ids])
 
-    async def wait_for_completion(self, submission_id: str):
-        timeout = 300
-        try:
-            with asyncio.timeout(timeout):
-                while True:
-                    tasks = await mongodb_service.get_agent_tasks(submission_id)
-                    if all(
-                        task["status"]
-                        in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
-                        for task in tasks
-                    ):
-                        return
-                    await asyncio.sleep(5)
-        except TimeoutError:
-            raise TimeoutError("Agent tasks did not complete within timeout")
+    async def wait_for_completion(self, submission_id: str, timeout: int = 300):
+        start_time = datetime.now()
+        while (datetime.now() - start_time).seconds < timeout:
+            tasks = await mongodb_service.get_agent_tasks(submission_id)
+            if all(
+                task["status"] in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
+                for task in tasks
+            ):
+                return
+            await asyncio.sleep(5)
+
+        raise TimeoutError("Agent tasks did not complete within timeout")
 
     async def execute_synthesis(self, submission_id: str) -> str:
         tasks = await mongodb_service.get_agent_tasks(submission_id)

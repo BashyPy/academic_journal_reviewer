@@ -29,12 +29,18 @@ function UploadForm({ onUploadSuccess }) {
 
     try {
       const response = await axios.post('/api/v1/submissions/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000
       });
       
       onUploadSuccess(response.data.submission_id);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed');
+      console.error('Upload error:', err);
+      if (err.code === 'ECONNREFUSED') {
+        setError('Backend server is not running. Please start the backend.');
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Upload failed');
+      }
     } finally {
       setUploading(false);
     }

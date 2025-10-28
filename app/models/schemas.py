@@ -46,9 +46,25 @@ class AgentTask(BaseModel):
     created_at: datetime
 
 
+class TextHighlight(BaseModel):
+    text: str
+    start_pos: int
+    end_pos: int
+    context: str
+    issue_type: str
+
+
+class DetailedFinding(BaseModel):
+    finding: str
+    highlights: List[TextHighlight]
+    severity: str  # "minor", "moderate", "major"
+    category: str
+
+
 class AgentCritique(BaseModel):
     agent_type: AgentType
     score: float
-    findings: List[str]
+    findings: List[DetailedFinding]
     recommendations: List[str]
     confidence: float
+    bias_check: str

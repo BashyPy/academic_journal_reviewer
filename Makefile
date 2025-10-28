@@ -10,8 +10,8 @@ help:
 	@echo "  down       - Stop Docker services"
 	@echo "  logs       - View Docker logs"
 	@echo "  clean      - Clean Docker resources"
-	@echo "  test       - Run tests
-  format     - Format code with black"
+	@echo "  test       - Run tests"
+	@echo "  format     - Format code with black"
 
 install:
 	pip install -r requirements.txt
