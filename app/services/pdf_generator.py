@@ -7,6 +7,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 from io import BytesIO
 import re
 from datetime import datetime
+from app.services.disclaimer_service import disclaimer_service
 
 
 class PDFReportGenerator:
@@ -71,8 +72,29 @@ class PDFReportGenerator:
         
         story = []
         
-        # Header
+        # Header with disclaimer
         story.extend(self._create_header(submission_info))
+        story.append(Spacer(1, 10))
+        
+        # Add prominent disclaimer at top
+        disclaimer_style = ParagraphStyle(
+            name='DisclaimerStyle',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            spaceAfter=15,
+            leftIndent=0.5*inch,
+            rightIndent=0.5*inch,
+            borderWidth=1,
+            borderPadding=10
+        )
+        
+        disclaimer_text = (
+            "<b>⚠️ HUMAN OVERSIGHT REQUIRED:</b> This AI-generated review is for preliminary assessment only. "
+            "Human expert validation is mandatory before any editorial decisions. "
+            "Do not use for final publication decisions without qualified human reviewer approval."
+        )
+        
+        story.append(Paragraph(disclaimer_text, disclaimer_style))
         story.append(Spacer(1, 20))
         
         # Parse and format content
@@ -91,7 +113,7 @@ class PDFReportGenerator:
         
         # Title
         title = submission_info.get('title', 'Academic Review Report')
-        elements.append(Paragraph(f"Academic Review Report", self.styles['AcademicReportTitle']))
+        elements.append(Paragraph("Academic Review Report", self.styles['AcademicReportTitle']))
         elements.append(Spacer(1, 10))
         
         # Manuscript info
@@ -111,47 +133,52 @@ class PDFReportGenerator:
         elements = []
         lines = content.split('\n')
         current_section = []
-        
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-                
-            # Section headers (##)
-            if line.startswith('## '):
-                if current_section:
-                    elements.extend(self._process_section(current_section))
-                    current_section = []
-                
-                header = line[3:].strip()
-                elements.append(Paragraph(header, self.styles['AcademicSectionHeader']))
-                
-            # Subsection headers (###)
-            elif line.startswith('### '):
-                header = line[4:].strip()
-                elements.append(Paragraph(header, self.styles['AcademicSubHeader']))
-                
-            # Bullet points
-            elif line.startswith('- '):
-                bullet_text = line[2:].strip()
-                elements.append(Paragraph(f"• {bullet_text}", self.styles['AcademicIssueText']))
-                
-            # Numbered lists
-            elif re.match(r'^\d+\.', line):
-                elements.append(Paragraph(line, self.styles['AcademicIssueText']))
-                
-            # Regular paragraphs
-            else:
-                if line:
-                    # Clean up markdown formatting
-                    clean_line = self._clean_markdown(line)
-                    elements.append(Paragraph(clean_line, self.styles['AcademicBodyText']))
-        
+
+            handled, current_section = self._handle_special_line(line, elements, current_section)
+            if handled:
+                continue
+
+            # Regular paragraphs (fallback)
+            clean_line = self._clean_markdown(line)
+            elements.append(Paragraph(clean_line, self.styles['AcademicBodyText']))
+
         # Process any remaining section
         if current_section:
             elements.extend(self._process_section(current_section))
-        
+
         return elements
+
+    def _handle_special_line(self, line: str, elements: list, current_section: list) -> tuple:
+        # Handles section headers, subsections, bullets and numbered lists.
+        # Returns (handled: bool, current_section: list)
+        if line.startswith('## '):
+            if current_section:
+                elements.extend(self._process_section(current_section))
+                current_section = []
+            header = line[3:].strip()
+            elements.append(Paragraph(header, self.styles['AcademicSectionHeader']))
+            return True, current_section
+
+        if line.startswith('### '):
+            header = line[4:].strip()
+            elements.append(Paragraph(header, self.styles['AcademicSubHeader']))
+            return True, current_section
+
+        if line.startswith('- '):
+            bullet_text = line[2:].strip()
+            elements.append(Paragraph(f"• {bullet_text}", self.styles['AcademicIssueText']))
+            return True, current_section
+
+        if re.match(r'^\d+\.', line):
+            elements.append(Paragraph(line, self.styles['AcademicIssueText']))
+            return True, current_section
+
+        return False, current_section
 
     def _process_section(self, section_lines: list) -> list:
         elements = []
@@ -175,6 +202,11 @@ class PDFReportGenerator:
     def _create_footer(self) -> list:
         elements = []
         elements.append(Spacer(1, 20))
+        
+        # Add disclaimer
+        disclaimer_text = disclaimer_service.get_pdf_disclaimer()
+        elements.append(Paragraph(disclaimer_text, self.styles['Normal']))
+        elements.append(Spacer(1, 10))
         
         footer_text = (
             "This review was generated by the Academic Agentic Review Intelligence System (AARIS). "

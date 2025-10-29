@@ -1,37 +1,56 @@
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'Arial', 'fontSize': '16px'}}}%%
 graph TD
-    subgraph "Frontend"
-        A["Journal Editor (Human)"] --> B["User Interface (UI)"]
+    subgraph "Client Layer"
+        A["Journal Editor (Human)"] --> B["HTTP Client / API Consumer"]
     end
 
-    subgraph "Backend Services"
-        B -->|"Submit & Load"| C["API Gateway & Ingestion"]
-        C -->|"Trigger"| D["Agent Orchestrator - The Planner"]
+    subgraph "FastAPI Application"
+        B -->|"POST /upload"| C["API Routes & Middleware"]
+        C -->|"Parse Document"| C1["Document Parser (PDF/DOCX)"]
+        C -->|"Apply Guardrails"| C2["Guardrail Middleware"]
+        C -->|"Trigger Review"| D["Orchestrator Agent"]
     end
 
-    subgraph "Agentic System (MAS)"
-        D -->|"Task Delegation"| E1["Methodology & Stats Agent"]
-        D -->|"Task Delegation"| E2["Literature & Novelty Agent"]
-        D -->|"Task Delegation"| E3["Clarity & Presentation Agent"]
-        D -->|"Task Delegation"| E4["Integrity & Ethics Agent"]
-        D -->|"Consolidate"| G["Synthesis Agent"]
+    subgraph "Multi-Agent System"
+        D -->|"Parallel Tasks"| E1["Methodology Agent"]
+        D -->|"Parallel Tasks"| E2["Literature Agent"]
+        D -->|"Parallel Tasks"| E3["Clarity Agent"]
+        D -->|"Parallel Tasks"| E4["Ethics Agent"]
+        E1 --> G["Synthesis Agent"]
+        E2 --> G
+        E3 --> G
+        E4 --> G
     end
 
-    subgraph "Data & Persistence"
-        C -->|"Save Manuscript"| F["Memory & State (Firestore)"]
-        E1 -->|"Write Results"| F
-        E2 -->|"Write Results"| F
-        E3 -->|"Write Results"| F
-        E4 -->|"Write Results"| F
-        G -->|"Write Final Report"| F
+    subgraph "Supporting Services"
+        C1 --> S1["Domain Detector (21+ Domains)"]
+        G --> S2["Issue Deduplicator"]
+        G --> S3["PDF Generator"]
+        C2 --> S4["Content Safety & Bias Detection"]
     end
 
-    subgraph "External Tools (The Environment)"
-        E2 -->|"Check Lit."| H1["Google Search / Citation DB"]
-        E4 -->|"Check Compliance"| H2["Plagiarism API / CoI Check"]
+    subgraph "Data Layer"
+        C -->|"Store Submission"| F["MongoDB Database"]
+        D -->|"Save Tasks"| F
+        E1 -->|"Save Results"| F
+        E2 -->|"Save Results"| F
+        E3 -->|"Save Results"| F
+        E4 -->|"Save Results"| F
+        G -->|"Save Final Report"| F
     end
 
-    F -->|"Load Final Report"| B
+    subgraph "LLM Providers"
+        E1 --> L1["OpenAI GPT"]
+        E2 --> L2["Anthropic Claude"]
+        E3 --> L3["Google Gemini"]
+        E4 --> L4["Groq Models"]
+        G --> L1
+    end
+
+    F -->|"GET /report"| B
+    S3 -->|"GET /download"| B
+    
     style D fill:#aaffcc,stroke:#333
     style G fill:#ffccaa,stroke:#333
     style F fill:#cccccc,stroke:#333
+    style C fill:#e1f5fe,stroke:#333

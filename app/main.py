@@ -34,6 +34,15 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/disclaimer")
+async def get_disclaimer():
+    from app.services.disclaimer_service import disclaimer_service
+    return {
+        "system_disclaimer": disclaimer_service.get_system_disclaimer(),
+        **disclaimer_service.get_api_disclaimer()
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 

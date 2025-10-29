@@ -1,36 +1,65 @@
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'Arial', 'fontSize': '16px'}}}%%
 sequenceDiagram
     actor Editor
-    participant UI
-    participant Gateway
-    participant DB as Firestore (Memory & State)
-    participant Orch as Orchestrator Agent (Planner)
-    participant Specs as Specialist Agents (Parallel)
+    participant Client
+    participant FastAPI
+    participant Parser as Document Parser
+    participant MongoDB
+    participant Domain as Domain Detector
+    participant Orch as Orchestrator Agent
+    participant Agents as Specialist Agents
     participant Synth as Synthesis Agent
+    participant PDF as PDF Generator
+    participant LLM as LLM Providers
 
-    Editor->>UI: 1. Upload Manuscript
-    UI->>Gateway: 2. Submit & Trigger
-    Gateway->>DB: 3. Save Manuscript (Initial Submission)
-    Gateway->>Orch: 4. Activate Orchestrator
+    Editor->>Client: 1. Upload Manuscript (PDF/DOCX)
+    Client->>FastAPI: 2. POST /api/v1/submissions/upload
+    FastAPI->>Parser: 3. Parse Document Content
+    Parser->>Domain: 4. Detect Academic Domain
+    FastAPI->>MongoDB: 5. Save Submission & Metadata
+    FastAPI->>Orch: 6. Trigger Review Process (Async)
+    FastAPI-->>Client: 7. Return Submission ID
 
-    Orch->>Orch: 5. Generate Dynamic Plan (Planning/Reasoning)
-    Orch->>DB: 6. Push 4 Parallel Tasks (Agent State)
+    Orch->>MongoDB: 8. Create Agent Tasks
+    Orch->>Domain: 9. Get Domain-Specific Weights
 
-    par Parallel Execution Loop
-        Specs->>DB: 7. Read Task/Context
-        Specs->>Specs: 8. Execute Logic & Reflection
-        Specs->>DB: 9. Save Structured Critique (Task_Completed)
+    par Parallel Agent Execution
+        Orch->>Agents: 10a. Methodology Agent
+        Agents->>LLM: Call LLM API
+        LLM-->>Agents: Analysis Response
+        Agents->>MongoDB: Save Methodology Critique
     and
-        Specs-->>Specs: ... 3 other Agents run concurrently ...
+        Orch->>Agents: 10b. Literature Agent
+        Agents->>LLM: Call LLM API
+        LLM-->>Agents: Analysis Response
+        Agents->>MongoDB: Save Literature Critique
+    and
+        Orch->>Agents: 10c. Clarity Agent
+        Agents->>LLM: Call LLM API
+        LLM-->>Agents: Analysis Response
+        Agents->>MongoDB: Save Clarity Critique
+    and
+        Orch->>Agents: 10d. Ethics Agent
+        Agents->>LLM: Call LLM API
+        LLM-->>Agents: Analysis Response
+        Agents->>MongoDB: Save Ethics Critique
     end
 
-    loop Monitor DB until 4 tasks complete
-        Orch->>DB: 10. Check Task Status
-    end
+    Orch->>Synth: 11. Trigger Synthesis
+    Synth->>MongoDB: 12. Load All Agent Critiques
+    Synth->>Synth: 13. Deduplicate Issues
+    Synth->>LLM: 14. Generate Final Report
+    LLM-->>Synth: Synthesized Report
+    Synth->>MongoDB: 15. Save Final Report
+    MongoDB->>FastAPI: 16. Update Status to Completed
 
-    Orch->>Synth: 11. Activate Synthesis Agent
-    Synth->>DB: 12. Load All Critiques
-    Synth->>Synth: 13. Compile & Recommend
-    Synth->>DB: 14. Save Final Report (Submissions)
-    DB->>UI: 15. Notify UI of Completion
-    UI->>Editor: 16. Display Review Report
+    Client->>FastAPI: 17. GET /api/v1/submissions/{id}/report
+    FastAPI->>MongoDB: 18. Retrieve Final Report
+    MongoDB-->>FastAPI: Report Data
+    FastAPI-->>Client: 19. Return Report JSON
+
+    Client->>FastAPI: 20. GET /api/v1/submissions/{id}/download
+    FastAPI->>PDF: 21. Generate PDF Report
+    PDF-->>FastAPI: PDF Buffer
+    FastAPI-->>Client: 22. Stream PDF Download
+    Client-->>Editor: 23. Display/Download Report

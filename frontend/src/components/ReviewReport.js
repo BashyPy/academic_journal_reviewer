@@ -24,16 +24,22 @@ function ReviewReport({ submissionId }) {
   if (loading) return <div className="loading">Loading report...</div>;
   if (error) return <div className="error">{error}</div>;
 
-  const formatMarkdown = (text) => {
-    return text
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      .replace(/^\* (.*$)/gim, '<li>$1</li>')
-      .replace(/^- (.*$)/gim, '<li>$1</li>')
-      .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
-      .replace(/\*(.*)\*/gim, '<em>$1</em>')
-      .replace(/\n/gim, '<br>');
+  const downloadPDF = async () => {
+    try {
+      const response = await axios.get(`/api/v1/submissions/${submissionId}/download`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `review_report_${submissionId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Failed to download PDF report');
+    }
   };
 
   return (
@@ -43,20 +49,13 @@ function ReviewReport({ submissionId }) {
       <p><strong>Completed:</strong> {new Date(report.completed_at).toLocaleString()}</p>
       
       <div className="report-content">
-        <div dangerouslySetInnerHTML={{ __html: formatMarkdown(report.final_report) }} />
+        <p>Your comprehensive review report is ready for download as a PDF.</p>
+        <p><strong>Status:</strong> {report.status}</p>
       </div>
       
       <div style={{ marginTop: '20px', textAlign: 'center' }}>
         <button 
-          onClick={() => {
-            const element = document.createElement('a');
-            const file = new Blob([report.final_report], { type: 'text/markdown' });
-            element.href = URL.createObjectURL(file);
-            element.download = `review_report_${submissionId}.md`;
-            document.body.appendChild(element);
-            element.click();
-            document.body.removeChild(element);
-          }}
+          onClick={downloadPDF}
           style={{
             background: '#3498db',
             color: 'white',
@@ -66,7 +65,7 @@ function ReviewReport({ submissionId }) {
             cursor: 'pointer'
           }}
         >
-          Download Report
+          Download PDF Report
         </button>
       </div>
     </div>

@@ -4,6 +4,7 @@ from app.services.issue_deduplicator import issue_deduplicator
 from app.services.llm_service import llm_service
 from app.services.domain_detector import domain_detector
 from app.services.pdf_generator import pdf_generator
+from app.services.disclaimer_service import disclaimer_service
 from app.middleware.guardrail_middleware import apply_review_guardrails
 
 
@@ -24,7 +25,12 @@ class SynthesisAgent:
             response = await llm_service.generate_content(prompt, self.llm_provider)
         
         # Apply guardrails to final review
-        return apply_review_guardrails(response)
+        sanitized_response = apply_review_guardrails(response)
+        
+        # Add human oversight disclaimer
+        disclaimer_text = "\n\n---\n\n" + disclaimer_service.get_pdf_disclaimer()
+        
+        return sanitized_response + disclaimer_text
     
     async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
         """Generate PDF version of the review report"""

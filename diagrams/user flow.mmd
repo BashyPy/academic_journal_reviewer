@@ -12,21 +12,31 @@
 }}%%
 
 graph TB
-    A["Journal Editor"] -->|"1. Upload Manuscript"| B["UI / API Gateway"]
-    B -->|"2. Ingestion: Parse & Save"| C["Firestore: Submissions"]
-    C --> D["Trigger Orchestrator Agent"]
+    A["Journal Editor"] -->|"1. POST /api/v1/submissions/upload"| B["FastAPI Application"]
+    B -->|"2. Parse Document & Detect Domain"| C["Document Parser + Domain Detector"]
+    C -->|"3. Save to MongoDB"| D["MongoDB: submissions collection"]
+    D -->|"4. Trigger Async Review"| E["Orchestrator Agent"]
 
-    subgraph Review["Agent Review"]
-        D -->|"3. Delegate Tasks"| E["Specialist Agents\n(Parallel Execution)"]
-        E -->|"4. Coordinate & Reflect"| F["Firestore: Agent State"]
-        F --> G["Synthesis Agent\n(Consolidation)"]
-        G -->|"5. Generate & Save Final Report"| C
+    subgraph Review["Multi-Agent Review Process"]
+        E -->|"5. Create Parallel Tasks"| F["MongoDB: agent_tasks collection"]
+        F -->|"6. Execute Agents"| G["Specialist Agents: (Methodology, Literature, Clarity, Ethics)"]
+        G -->|"7. Save Critiques"| F
+        F -->|"8. All Tasks Complete"| H["Synthesis Agent"]
+        H -->|"9. Deduplicate & Generate Report"| I["Issue Deduplicator + PDF Generator"]
+        I -->|"10. Save Final Report"| D
     end
 
-    C --> H["UI: Notification — Report Ready"]
-    H -->|"6. Review Agent Report & Make Decision"| A
-    A -->|"Decision (Accept / Revise / Reject)"| I["Journal Workflow System"]
+    I -->|"11. Notify Completion"| D
+    A -->|"12. GET /api/v1/submissions/{id}/status"| J["Status Polling"]
+    J -->|"13. Review Complete"| K["GET /api/v1/submissions/{id}/report"]
+    K -->|"14. Download PDF"| L["GET /api/v1/submissions/{id}/download"]
+    L -->|"15. Review & Make Decision"| A
+    A -->|"Decision (Accept / Revise / Reject)"| M["Editorial Decision System"]
 
     classDef actor fill:#e8f2ff,stroke:#3b6ea5,stroke-width:1px;
-    class A actor;
-    class I actor;
+    classDef api fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef db fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    
+    class A,M actor;
+    class B,J,K,L api;
+    class D,F db;

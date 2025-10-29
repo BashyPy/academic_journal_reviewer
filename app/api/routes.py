@@ -15,6 +15,7 @@ from app.models.schemas import TaskStatus
 from app.services.document_parser import document_parser
 from app.services.mongodb_service import mongodb_service
 from app.services.pdf_generator import pdf_generator
+from app.services.disclaimer_service import disclaimer_service
 
 router = APIRouter()
 
@@ -77,7 +78,7 @@ async def upload_manuscript(
         }
 
         submission_id = await mongodb_service.save_submission(submission_data)
-        asyncio.create_task(orchestrator.process_submission(submission_id))
+        _ = asyncio.create_task(orchestrator.process_submission(submission_id))
 
         return {
             "submission_id": submission_id,
@@ -243,6 +244,7 @@ async def get_final_report(submission_id: str):
             "title": submission["title"],
             "final_report": submission["final_report"],
             "completed_at": submission.get("completed_at"),
+            **disclaimer_service.get_api_disclaimer()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -3,18 +3,41 @@
   'themeVariables': { 'fontFamily': 'Inter, Arial, sans-serif', 'fontSize': '14px' }
 }}%%
 mindmap
-    root((AARIS Data Architecture — Firestore))
-        Collections
-            Submission Collection
-                Path: artifacts / <appId> / public / data / submissions
-                Data Points Per Submission
-                    - Manuscript Content (parsed text / JSON)
-                    - Original File Metadata (PDF, DOCX)
-                    - Final Review Report (Markdown, PDF)
-            Agent State Collection
-                Path: artifacts / <appId> / public / data / agent_state
-                Data Points Per Submission
-                    - Orchestrator Plan (multi-step decomposition)
-                    - Agent Status (running, completed)
-                    - Agent Critique Objects (scores, findings from specialist agents)
-                    - Coordination / Timestamps
+    root((AARIS Data Architecture — MongoDB))
+        Database: aaris
+            submissions Collection
+                Document Structure
+                    - _id (ObjectId)
+                    - title (string)
+                    - content (parsed text)
+                    - file_metadata (object)
+                        - original_filename
+                        - file_size
+                        - file_type (pdf/docx)
+                        - pages
+                    - status (pending/processing/completed)
+                    - final_report (markdown string)
+                    - created_at (datetime)
+                    - completed_at (datetime)
+            agent_tasks Collection
+                Document Structure
+                    - _id (ObjectId)
+                    - submission_id (string)
+                    - agent_type (methodology/literature/clarity/ethics)
+                    - status (pending/running/completed/failed)
+                    - critique (object)
+                        - score (number 1-10)
+                        - findings (array)
+                        - highlights (array)
+                    - created_at (datetime)
+                    - completed_at (datetime)
+        Indexes
+            submissions
+                - _id (primary)
+                - status
+                - created_at
+            agent_tasks
+                - _id (primary)
+                - submission_id
+                - agent_type
+                - status
