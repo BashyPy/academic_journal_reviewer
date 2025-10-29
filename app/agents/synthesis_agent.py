@@ -1,11 +1,13 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from app.services.issue_deduplicator import issue_deduplicator
 from app.services.llm_service import llm_service
+from app.services.domain_detector import domain_detector
+from app.middleware.guardrail_middleware import apply_review_guardrails
 
 
 class SynthesisAgent:
-    def __init__(self, llm_provider: str = None):
+    def __init__(self, llm_provider: Optional[str] = None):
         self.llm_provider = llm_provider
 
     async def generate_final_report(self, context: Dict[str, Any]) -> str:
@@ -15,16 +17,23 @@ class SynthesisAgent:
         try:
             # Try enhanced synthesis first
             response = await enhanced_llm_service.enhanced_synthesis(context)
-            return response
         except Exception:
             # Fallback to standard synthesis
             prompt = self.build_synthesis_prompt(context)
             response = await llm_service.generate_content(prompt, self.llm_provider)
-            return response
+        
+        # Apply guardrails to final review
+        return apply_review_guardrails(response)
 
     def build_synthesis_prompt(self, context: Dict[str, Any]) -> str:
         submission = context["submission"]
         critiques = context["critiques"]
+
+        # Detect domain and get domain-specific configuration
+        domain_info = domain_detector.detect_domain(submission)
+        domain = domain_info["primary_domain"]
+        weights = domain_detector.get_domain_specific_weights(domain)
+        domain_criteria = domain_detector.get_domain_specific_criteria(domain)
 
         # Deduplicate findings across agents
         all_findings = []
@@ -37,14 +46,8 @@ class SynthesisAgent:
         critiques_text = self._format_critiques_with_deduplication(
             critiques, prioritized_issues
         )
-        overall_score = self._calculate_weighted_score(critiques)
+        overall_score = self._calculate_weighted_score(critiques, weights)
         decision = self._determine_decision(overall_score)
-        weights = {
-            "methodology": 0.3,
-            "literature": 0.25,
-            "clarity": 0.25,
-            "ethics": 0.2,
-        }
 
         return self._build_prompt_template(
             submission,
@@ -53,87 +56,86 @@ class SynthesisAgent:
             decision,
             weights,
             prioritized_issues,
+            domain_info,
+            domain_criteria,
         )
 
     def _format_critiques_with_deduplication(
         self, critiques, prioritized_issues
     ) -> str:
-        critiques_text = "AGENT SCORES:\n"
-        for critique in critiques:
-            critiques_text += (
-                f"- {critique['agent_type'].title()}: {critique['score']}/10\n"
-            )
+        parts = []
+        parts.append("AGENT SCORES:\n")
+        parts.append(self._format_agent_scores(critiques))
+        parts.append("\nTOP ISSUES WITH QUOTED TEXT:\n")
 
-        critiques_text += "\nTOP ISSUES WITH QUOTED TEXT:\n"
-
-        # Show major issues first with full detail
         major_issues = prioritized_issues.get("major", [])
         if major_issues:
-            critiques_text += "\nMAJOR ISSUES (require immediate attention):\n"
-            for issue in major_issues:
-                text = issue.finding if hasattr(issue, "finding") else str(issue)
-                section = (
-                    getattr(issue, "section", "unknown")
-                    if hasattr(issue, "section")
-                    else "unknown"
-                )
-                line_ref = (
-                    getattr(issue, "line_reference", "")
-                    if hasattr(issue, "line_reference")
-                    else ""
-                )
+            parts.append("\nMAJOR ISSUES (require immediate attention):\n")
+            parts.append(self._format_issues_list(major_issues, quote_mode="full"))
 
-                # Include quoted text if available
-                quoted_text = ""
-                if hasattr(issue, "highlights") and issue.highlights:
-                    quoted_text = f' Quote: "{issue.highlights[0].text}"'
-
-                critiques_text += (
-                    f"- [{section.title()}, Line {line_ref}] {text}{quoted_text}\n"
-                )
-
-        # Show top 5 moderate issues with detail, summarize rest
         moderate_issues = prioritized_issues.get("moderate", [])
         if moderate_issues:
-            critiques_text += f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):\n"
-            for issue in moderate_issues[:5]:
-                text = issue.finding if hasattr(issue, "finding") else str(issue)
-                section = (
-                    getattr(issue, "section", "unknown")
-                    if hasattr(issue, "section")
-                    else "unknown"
-                )
-                line_ref = (
-                    getattr(issue, "line_reference", "")
-                    if hasattr(issue, "line_reference")
-                    else ""
-                )
-
-                quoted_text = ""
-                if hasattr(issue, "highlights") and issue.highlights:
-                    quoted_text = f' Quote: "{issue.highlights[0].text[:50]}..."'
-
-                critiques_text += (
-                    f"- [{section.title()}, Line {line_ref}] {text}{quoted_text}\n"
-                )
-
+            parts.append(f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):\n")
+            parts.append(self._format_issues_list(moderate_issues[:5], quote_mode="snippet"))
             if len(moderate_issues) > 5:
-                critiques_text += f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n"
+                parts.append(f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n")
 
-        # Summarize minor issues
         minor_issues = prioritized_issues.get("minor", [])
         if minor_issues:
-            critiques_text += f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): Enhancement opportunities across sections\n"
+            parts.append(f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): Enhancement opportunities across sections\n")
 
-        return critiques_text
+        return "".join(parts)
 
-    def _calculate_weighted_score(self, critiques) -> float:
-        weights = {
-            "methodology": 0.3,
-            "literature": 0.25,
-            "clarity": 0.25,
-            "ethics": 0.2,
-        }
+    def _format_agent_scores(self, critiques) -> str:
+        lines = []
+        for critique in critiques:
+            # safe access for dict-like critique
+            agent_type = critique.get("agent_type") if isinstance(critique, dict) else getattr(critique, "agent_type", "")
+            score = critique.get("score") if isinstance(critique, dict) else getattr(critique, "score", "")
+            lines.append(f"- {str(agent_type).title()}: {score}/10\n")
+        return "".join(lines)
+
+    def _get_field(self, item, field, default=None):
+        if isinstance(item, dict):
+            return item.get(field, default)
+        return getattr(item, field, default)
+
+    def _format_quote(self, highlights, quote_mode: str) -> str:
+        if not highlights:
+            return ""
+        first = highlights[0]
+        quote_text = self._get_field(first, "text", "") or getattr(first, "text", "") or ""
+        if not quote_text:
+            return ""
+        if quote_mode == "full":
+            return f' Quote: "{quote_text}"'
+        if quote_mode == "snippet":
+            snippet = quote_text[:50] + "..." if len(quote_text) > 50 else quote_text
+            return f' Quote: "{snippet}"'
+        return ""
+
+    def _format_issues_list(self, issues, quote_mode: str = "none") -> str:
+        """
+        quote_mode: "full" -> include full quoted text if available
+                    "snippet" -> include first ~50 chars of quote
+                    "none" -> no quote
+        """
+        lines = []
+        for issue in issues:
+            text = self._get_field(issue, "finding")
+            if text is None:
+                text = str(issue)
+
+            section = self._get_field(issue, "section", "unknown") or "unknown"
+            line_ref = self._get_field(issue, "line_reference", "") or ""
+
+            highlights = self._get_field(issue, "highlights", None)
+            quoted_text = self._format_quote(highlights, quote_mode)
+
+            lines.append(f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n")
+        return "".join(lines)
+
+    def _calculate_weighted_score(self, critiques, weights: Dict[str, float]) -> float:
         total_score = total_weight = 0.0
 
         for critique in critiques:
@@ -162,56 +164,76 @@ class SynthesisAgent:
         decision,
         weights,
         prioritized_issues,
+        domain_info,
+        domain_criteria,
     ) -> str:
         major_count = len(prioritized_issues.get("major", []))
         moderate_count = len(prioritized_issues.get("moderate", []))
         minor_count = len(prioritized_issues.get("minor", []))
 
+        domain = domain_info["primary_domain"]
+        confidence = domain_info["confidence"]
+        
         return f"""
-Generate a professional, section-specific academic review report.
+Generate a professional, domain-specific academic review report with standardized issue explanations.
 
 MANUSCRIPT: {submission['title']}
+DOMAIN: {domain.title()} (confidence: {confidence:.2f})
 OVERALL SCORE: {overall_score}/10 | DECISION: {decision}
 ISSUE SUMMARY: {major_count} major, {moderate_count} moderate, {minor_count} minor
 
 DEDUPLICATED ANALYSIS:
 {critiques_text}
 
-CREATE STRUCTURED REPORT:
+CREATE STRUCTURED REPORT WITH RIGOROUS STANDARDS:
 
 ## Executive Summary
 - Score: {overall_score}/10, Decision: {decision}
-- Brief assessment highlighting main strengths and key improvement areas
+- Brief assessment highlighting main strengths and key improvement areas (max 2 paragraphs)
 
 ## Critical Issues ({major_count} items)
-- List each critical issue with exact quoted text
-- Include line numbers and section references
-- Provide immediate action required
+For each critical issue, provide EXACTLY 2 paragraphs:
+- Paragraph 1: Identify the specific problem with exact quoted text and line references
+- Paragraph 2: Explain the impact and provide concrete solution/action required
 
 ## Important Improvements ({moderate_count} items)
-- Show top 5 most important issues with specific examples:
-  * Quote exact problematic text
-  * Reference line numbers and sections
-  * Suggest specific improvements
-- Group remaining issues by section if more than 5
+For each improvement (top 5 detailed), provide AT MOST 2 paragraphs:
+- Paragraph 1: Quote problematic text with section/line reference and explain the issue
+- Paragraph 2: Suggest specific improvement with rationale (optional if issue is self-evident)
+- Group remaining issues by section with 1 paragraph summaries
 
 ## Minor Suggestions ({minor_count} items)
-- List optional improvements with section references
-- Focus on enhancement opportunities
+- List with 1 paragraph explanations maximum
+- Focus on enhancement opportunities with section references
 
 ## Manuscript Strengths
-- Highlight specific good practices with examples
+- Highlight specific practices with examples (1-2 paragraphs total)
 - Quote well-written passages where applicable
-- Acknowledge methodological strengths
 
 ## Section-Specific Action Items
-1. **Abstract**: [Specific line-by-line changes needed]
-2. **Methods**: [Exact additions/modifications required]
-3. **Results**: [Specific improvements with line references]
-4. **Discussion**: [Targeted enhancements needed]
+1. **Abstract**: [Specific changes needed - 1 paragraph]
+2. **Methods**: [Exact additions/modifications - 1 paragraph]
+3. **Results**: [Specific improvements - 1 paragraph]
+4. **Discussion**: [Targeted enhancements - 1 paragraph]
 
-## Score Breakdown
-Methodology: {weights['methodology']*100}% | Literature: {weights['literature']*100}% | Clarity: {weights['clarity']*100}% | Ethics: {weights['ethics']*100}%
+## Score Breakdown ({domain.title()} Domain Weighting)
+Methodology: {weights['methodology']*100:.0f}% | Literature: {weights['literature']*100:.0f}% | Clarity: {weights['clarity']*100:.0f}% | Ethics: {weights['ethics']*100:.0f}%
 
-Prioritize showing exact quoted text for top issues. Limit moderate issues to 5 detailed examples plus grouped summary.
+## Domain-Specific Focus Areas
+{self._format_domain_criteria(domain_criteria)}
+
+STRICT FORMATTING RULES:
+- Critical issues: EXACTLY 2 paragraphs each
+- Important improvements: AT MOST 2 paragraphs each
+- Minor suggestions: 1 paragraph maximum each
+- Include exact quoted text and line references for all issues
+- Apply {domain.title()} domain standards and expectations
+- Ensure explanations are concise, rigorous, and actionable
 """
+
+    def _format_domain_criteria(self, domain_criteria: Dict[str, List[str]]) -> str:
+        lines = []
+        for aspect, criteria in domain_criteria.items():
+            criteria_text = ", ".join(criteria)
+            lines.append(f"- {aspect.title()}: {criteria_text}")
+        return "\n".join(lines)
