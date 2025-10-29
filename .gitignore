@@ -12,3 +12,4 @@ reviews
 *.sqlite3
 *.log
 *.bak
+diagrams/enhanced
