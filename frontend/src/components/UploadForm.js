@@ -28,7 +28,7 @@ function UploadForm({ onUploadSuccess }) {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('/api/v1/submissions/upload', formData, {
+      const response = await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/v1/submissions/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000
       });

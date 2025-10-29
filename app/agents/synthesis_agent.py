@@ -27,10 +27,7 @@ class SynthesisAgent:
         # Apply guardrails to final review
         sanitized_response = apply_review_guardrails(response)
         
-        # Add human oversight disclaimer
-        disclaimer_text = "\n\n---\n\n" + disclaimer_service.get_pdf_disclaimer()
-        
-        return sanitized_response + disclaimer_text
+        return sanitized_response
     
     async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
         """Generate PDF version of the review report"""

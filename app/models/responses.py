@@ -36,3 +36,5 @@ class ReportResponse(BaseModel):
     title: str
     final_report: str
     completed_at: datetime
+    disclaimer: Optional[str] = None
+    status: Optional[str] = None

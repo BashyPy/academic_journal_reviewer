@@ -24,10 +24,12 @@ async def download_review_pdf(review_id: str):
             submission_info=review_data["submission"]
         )
         
-        # Create filename
-        title = review_data["submission"].get("title", "review")
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"review_{safe_title[:50]}_{review_id[:8]}.pdf"
+        # Create filename using {file_name}_reviewed format
+        original_filename = review_data["submission"].get("title", "manuscript")
+        # Remove extension and create safe filename
+        base_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else original_filename
+        safe_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"{safe_name}_reviewed.pdf"
         
         return StreamingResponse(
             io.BytesIO(pdf_buffer.read()),

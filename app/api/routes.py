@@ -239,13 +239,19 @@ async def get_final_report(submission_id: str):
         if submission["status"] != TaskStatus.COMPLETED.value:
             raise HTTPException(status_code=400, detail="Review not completed yet")
 
+        # Get disclaimer info
+        disclaimer_info = disclaimer_service.get_api_disclaimer()
+        
         return {
             "submission_id": submission_id,
             "title": submission["title"],
-            "final_report": submission["final_report"],
+            "final_report": submission.get("final_report", ""),
             "completed_at": submission.get("completed_at"),
-            **disclaimer_service.get_api_disclaimer()
+            "status": submission["status"],
+            "disclaimer": disclaimer_info.get("disclaimer", "")
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -287,10 +293,12 @@ async def download_report_pdf(submission_id: str):
             submission, submission["final_report"]
         )
 
-        # Create safe filename
-        title = submission.get("title", "review")
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"review_{safe_title[:30]}_{submission_id[:8]}.pdf"
+        # Create safe filename using {file_name}_reviewed format
+        original_filename = submission.get("file_metadata", {}).get("original_filename", submission.get("title", "manuscript"))
+        # Remove extension and create safe filename
+        base_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else original_filename
+        safe_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"{safe_name}_reviewed.pdf"
 
         # Return PDF as streaming response
         return StreamingResponse(
