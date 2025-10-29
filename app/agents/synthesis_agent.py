@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from app.services.issue_deduplicator import issue_deduplicator
 from app.services.llm_service import llm_service
 from app.services.domain_detector import domain_detector
+from app.services.pdf_generator import pdf_generator
 from app.middleware.guardrail_middleware import apply_review_guardrails
 
 
@@ -24,6 +25,14 @@ class SynthesisAgent:
         
         # Apply guardrails to final review
         return apply_review_guardrails(response)
+    
+    async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
+        """Generate PDF version of the review report"""
+        review_content = await self.generate_final_report(context)
+        submission_info = context.get("submission", {})
+        
+        pdf_buffer = pdf_generator.generate_pdf_report(review_content, submission_info)
+        return pdf_buffer.getvalue()
 
     def build_synthesis_prompt(self, context: Dict[str, Any]) -> str:
         submission = context["submission"]

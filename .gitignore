@@ -1,3 +1,14 @@
 __pycache__/
 .venv
 .env
+reviews
+.history
+.ipynb_checkpoints
+.vscode
+.DS_Store
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.log
+*.bak

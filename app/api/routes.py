@@ -280,16 +280,24 @@ async def download_report_pdf(submission_id: str):
         if submission["status"] != TaskStatus.COMPLETED.value:
             raise HTTPException(status_code=400, detail="Review not completed yet")
 
+        # Generate PDF from the review content
         pdf_buffer = pdf_generator.generate_review_pdf(
             submission, submission["final_report"]
         )
 
-        filename = f"review_report_{submission_id[:8]}.pdf"
+        # Create safe filename
+        title = submission.get("title", "review")
+        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"review_{safe_title[:30]}_{submission_id[:8]}.pdf"
 
+        # Return PDF as streaming response
         return StreamingResponse(
             iter([pdf_buffer.getvalue()]),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{filename}\"",
+                "Content-Type": "application/pdf"
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
