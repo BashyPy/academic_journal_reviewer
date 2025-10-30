@@ -18,6 +18,7 @@ from app.models.responses import (
 from app.models.schemas import TaskStatus
 from app.services.disclaimer_service import disclaimer_service
 from app.services.document_parser import document_parser
+from app.services.document_cache_service import document_cache_service
 from app.services.mongodb_service import mongodb_service
 from app.services.pdf_generator import pdf_generator
 from app.utils.logger import get_logger
@@ -177,10 +178,25 @@ async def upload_manuscript(
         )
 
         parsed_data = document_parser.parse_document(content, safe_filename)
+        document_content = parsed_data.get("content", "")
+        
+        # Check if identical document already exists
+        cached_submission = await document_cache_service.get_cached_submission(document_content)
+        if cached_submission:
+            logger.info(
+                f"Found cached submission for identical content: {safe_filename}",
+                additional_info={"cached_id": cached_submission.get("_id")}
+            )
+            return {
+                "submission_id": str(cached_submission["_id"]),
+                "status": cached_submission["status"],
+                "message": "Identical document found. Using cached results.",
+                "cached": True
+            }
 
         submission_data = {
             "title": safe_filename,
-            "content": parsed_data.get("content", ""),
+            "content": document_content,
             "file_metadata": {
                 **parsed_data.get("metadata", {}),
                 "original_filename": safe_filename,
@@ -191,6 +207,14 @@ async def upload_manuscript(
         }
 
         submission_id = await mongodb_service.save_submission(submission_data)
+        
+        # Cache the submission for future identical uploads
+        await document_cache_service.cache_submission(document_content, {
+            "_id": submission_id,
+            "title": safe_filename,
+            "status": TaskStatus.PENDING.value,
+            "created_at": datetime.now(timezone.utc)
+        })
 
         # Log the completed upload step (best-effort)
         try:
@@ -222,6 +246,7 @@ async def upload_manuscript(
             "submission_id": submission_id,
             "status": "processing",
             "message": "Manuscript uploaded successfully. Review process started.",
+            "cached": False
         }
     except HTTPException:
         raise

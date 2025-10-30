@@ -10,6 +10,7 @@ from app.agents.specialist_agents import (
 )
 from app.agents.synthesis_agent import SynthesisAgent
 from app.models.schemas import AgentType, TaskStatus
+from app.services.document_cache_service import document_cache_service
 from app.services.mongodb_service import mongodb_service
 from app.utils.logger import get_logger
 
@@ -43,13 +44,27 @@ class OrchestratorAgent:
 
             final_report = await self.execute_synthesis(submission_id)
 
+            completed_at = datetime.now()
             await mongodb_service.update_submission(
                 submission_id,
                 {
                     "final_report": final_report,
                     "status": TaskStatus.COMPLETED.value,
-                    "completed_at": datetime.now(),
+                    "completed_at": completed_at,
                 },
+            )
+            
+            # Update document cache with completed results
+            await document_cache_service.cache_submission(
+                submission["content"],
+                {
+                    "_id": submission_id,
+                    "title": submission["title"],
+                    "status": TaskStatus.COMPLETED.value,
+                    "final_report": final_report,
+                    "completed_at": completed_at
+                },
+                ttl_hours=168  # Cache completed reviews for 7 days
             )
 
             self.logger.log_review_process(

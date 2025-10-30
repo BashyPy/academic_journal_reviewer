@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.cache_routes import router as cache_router
 from app.utils.logger import get_logger
 
 # Initialize logger
@@ -70,6 +71,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(cache_router)
 
 
 @app.get("/")

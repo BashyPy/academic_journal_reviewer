@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-
 from app.core.config import settings
+from app.services.cache_service import cache_service
 
 
 class LLMProvider(ABC):
@@ -78,8 +78,21 @@ class LLMService:
         return loop.run_until_complete(self.generate_content(prompt, provider))
     
     async def generate_content(self, prompt: str, provider: str = None) -> str:
+        provider = provider or self.default_provider
+        
+        # Check cache first
+        cached_response = await cache_service.get(prompt, provider)
+        if cached_response:
+            return cached_response
+        
+        # Generate new response
         llm_provider = self.get_provider(provider)
-        return await llm_provider.generate_content(prompt)
+        response = await llm_provider.generate_content(prompt)
+        
+        # Cache the response
+        await cache_service.set(prompt, provider, response)
+        
+        return response
 
 
 llm_service = LLMService()
