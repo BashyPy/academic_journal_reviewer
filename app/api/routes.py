@@ -34,6 +34,7 @@ INVALID_SUBMISSION_ID = "Invalid submission ID"
 
 INVALID_FILENAME = "Invalid filename"
 
+
 def _content_matches_extension(data: bytes, extension: str) -> bool:
     if extension == ".pdf":
         if data[:4] == b"%PDF":

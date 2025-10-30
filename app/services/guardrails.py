@@ -150,6 +150,28 @@ class AcademicGuardrails:
 
         return violations
 
+    def filter_content(self, content: str) -> Dict[str, Any]:
+        """Filter content and return safety assessment."""
+        violations = self._check_sensitive_data({"content": content})
+        violations.extend(self._check_content_ethics({"content": content}))
+        
+        return {
+            "is_safe": len([v for v in violations if v.severity in ["high", "critical"]]) == 0,
+            "violations": violations,
+            "content": content
+        }
+    
+    def detect_bias(self, text: str) -> Dict[str, Any]:
+        """Detect potential bias in text."""
+        violations = self._check_bias_indicators(text)
+        bias_score = min(len(violations) * 0.2, 1.0)  # Scale 0-1
+        
+        return {
+            "bias_score": bias_score,
+            "violations": violations,
+            "has_bias": bias_score > 0.3
+        }
+
     def sanitize_content(
         self, content: str, violations: List[GuardrailViolation]
     ) -> str:

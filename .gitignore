@@ -16,3 +16,7 @@ diagrams/enhanced
 docs
 logging_examples.py
 test_api.py
+node_modules
+coverage
+.coverage
+htmlcov

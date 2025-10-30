@@ -66,6 +66,17 @@ class LLMService:
             raise ValueError(f"Unsupported LLM provider: {provider_name}")
         return self.providers[provider_name]()
 
+    def call_llm(self, prompt: str, provider: str = None) -> str:
+        """Synchronous wrapper for LLM calls (for test compatibility)."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        return loop.run_until_complete(self.generate_content(prompt, provider))
+    
     async def generate_content(self, prompt: str, provider: str = None) -> str:
         llm_provider = self.get_provider(provider)
         return await llm_provider.generate_content(prompt)

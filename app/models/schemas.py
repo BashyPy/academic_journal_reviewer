@@ -37,13 +37,14 @@ class Submission(BaseModel):
 
 
 class AgentTask(BaseModel):
-    id: str
+    id: Optional[str] = None
     agent_type: AgentType
     submission_id: str
     status: TaskStatus = TaskStatus.PENDING
-    context: Dict[str, Any]
+    context: Optional[Dict[str, Any]] = None
+    critique: Optional[Dict[str, Any]] = None
     result: Optional[Dict[str, Any]] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
 
 class TextHighlight(BaseModel):

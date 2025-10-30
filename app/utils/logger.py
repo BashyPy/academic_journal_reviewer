@@ -8,7 +8,7 @@ import traceback
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 class LogLevel(Enum):
@@ -34,7 +34,7 @@ class AARISLogger:
     - Review process audit trail
     """
 
-    def __init__(self, log_dir: str | Path = "logs"):
+    def __init__(self, log_dir: Union[str, Path] = "logs"):
         base_logs_dir = Path.cwd() / "logs"
         log_dir_path = Path(log_dir).resolve()
         try:
@@ -57,7 +57,7 @@ class AARISLogger:
         self.api_log = self.log_dir / "api.log"
 
         self._ensure_log_directory()
-        self._log_cache: set[int] = set()
+        self._log_cache = set()
 
     def _ensure_log_directory(self) -> None:
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -320,6 +320,6 @@ class AARISLogger:
 aaris_logger = AARISLogger()
 
 
-def get_logger(name: Optional[str] = None) -> AARISLogger:
+def get_logger(_name: Optional[str] = None) -> AARISLogger:
     """Get logger instance"""
     return aaris_logger
