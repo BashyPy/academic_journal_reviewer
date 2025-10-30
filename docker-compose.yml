@@ -1,45 +1,24 @@
-services:
-  mongodb:
-    image: mongo:7
-    container_name: aaris-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: aaris
-    volumes:
-      - mongodb_data:/data/db
+version: '3.8'
 
-  backend:
+services:
+  app:
     build: .
-    container_name: aaris-backend
-    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DATABASE=aaris
-      - DEFAULT_LLM=${DEFAULT_LLM:-groq}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-    volumes:
-      - ./logs:/app/logs
     depends_on:
       - mongodb
+    volumes:
+      - ./.env:/app/.env
 
-  frontend:
-    build: ./frontend
-    container_name: aaris-frontend
-    restart: unless-stopped
+  mongodb:
+    image: mongo:6.0
     ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - REACT_APP_BACKEND_URL=http://localhost:8000
-    depends_on:
-      - backend
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
 
 volumes:
   mongodb_data:
