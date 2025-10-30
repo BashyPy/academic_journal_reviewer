@@ -1,11 +1,10 @@
 from typing import Any, Dict, List, Optional
 
+from app.middleware.guardrail_middleware import apply_review_guardrails
+from app.services.domain_detector import domain_detector
 from app.services.issue_deduplicator import issue_deduplicator
 from app.services.llm_service import llm_service
-from app.services.domain_detector import domain_detector
 from app.services.pdf_generator import pdf_generator
-from app.services.disclaimer_service import disclaimer_service
-from app.middleware.guardrail_middleware import apply_review_guardrails
 
 
 class SynthesisAgent:
@@ -23,17 +22,17 @@ class SynthesisAgent:
             # Fallback to standard synthesis
             prompt = self.build_synthesis_prompt(context)
             response = await llm_service.generate_content(prompt, self.llm_provider)
-        
+
         # Apply guardrails to final review
         sanitized_response = apply_review_guardrails(response)
-        
+
         return sanitized_response
-    
+
     async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
         """Generate PDF version of the review report"""
         review_content = await self.generate_final_report(context)
         submission_info = context.get("submission", {})
-        
+
         pdf_buffer = pdf_generator.generate_pdf_report(review_content, submission_info)
         return pdf_buffer.getvalue()
 
@@ -88,13 +87,19 @@ class SynthesisAgent:
         moderate_issues = prioritized_issues.get("moderate", [])
         if moderate_issues:
             parts.append(f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):\n")
-            parts.append(self._format_issues_list(moderate_issues[:5], quote_mode="snippet"))
+            parts.append(
+                self._format_issues_list(moderate_issues[:5], quote_mode="snippet")
+            )
             if len(moderate_issues) > 5:
-                parts.append(f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n")
+                parts.append(
+                    f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n"
+                )
 
         minor_issues = prioritized_issues.get("minor", [])
         if minor_issues:
-            parts.append(f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): Enhancement opportunities across sections\n")
+            parts.append(
+                f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): Enhancement opportunities across sections\n"
+            )
 
         return "".join(parts)
 
@@ -102,8 +107,16 @@ class SynthesisAgent:
         lines = []
         for critique in critiques:
             # safe access for dict-like critique
-            agent_type = critique.get("agent_type") if isinstance(critique, dict) else getattr(critique, "agent_type", "")
-            score = critique.get("score") if isinstance(critique, dict) else getattr(critique, "score", "")
+            agent_type = (
+                critique.get("agent_type")
+                if isinstance(critique, dict)
+                else getattr(critique, "agent_type", "")
+            )
+            score = (
+                critique.get("score")
+                if isinstance(critique, dict)
+                else getattr(critique, "score", "")
+            )
             lines.append(f"- {str(agent_type).title()}: {score}/10\n")
         return "".join(lines)
 
@@ -116,7 +129,9 @@ class SynthesisAgent:
         if not highlights:
             return ""
         first = highlights[0]
-        quote_text = self._get_field(first, "text", "") or getattr(first, "text", "") or ""
+        quote_text = (
+            self._get_field(first, "text", "") or getattr(first, "text", "") or ""
+        )
         if not quote_text:
             return ""
         if quote_mode == "full":
@@ -144,7 +159,9 @@ class SynthesisAgent:
             highlights = self._get_field(issue, "highlights", None)
             quoted_text = self._format_quote(highlights, quote_mode)
 
-            lines.append(f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n")
+            lines.append(
+                f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n"
+            )
         return "".join(lines)
 
     def _calculate_weighted_score(self, critiques, weights: Dict[str, float]) -> float:
@@ -185,7 +202,7 @@ class SynthesisAgent:
 
         domain = domain_info["primary_domain"]
         confidence = domain_info["confidence"]
-        
+
         return f"""
 Generate a professional, domain-specific academic review report with standardized issue explanations.
 

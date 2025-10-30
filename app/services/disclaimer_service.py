@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class DisclaimerService:
@@ -49,7 +49,7 @@ Human expert review is mandatory for fair and accurate academic assessment.
             "disclaimer": "AI-generated review requires human oversight",
             "human_review_required": True,
             "intended_use": "preliminary_assessment_only",
-            "warning": "Do not use for final publication decisions without human expert validation"
+            "warning": "Do not use for final publication decisions without human expert validation",
         }
 
 

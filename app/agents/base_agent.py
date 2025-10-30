@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.models.schemas import AgentCritique, DetailedFinding, TextHighlight
 from app.services.manuscript_analyzer import manuscript_analyzer
 from app.services.text_analysis import TextAnalyzer
+from app.utils.logger import get_logger
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
@@ -15,6 +16,7 @@ class BaseAgent(ABC):
     def __init__(self, agent_type: str):
         self.agent_type = agent_type
         self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        self.logger = get_logger()
 
     @abstractmethod
     def get_system_prompt(self) -> str:
@@ -27,52 +29,100 @@ class BaseAgent(ABC):
         """
 
     async def execute_task(self, context: Dict[str, Any]) -> AgentCritique:
+        submission_id = context.get("submission_id", "unknown")
         manuscript_content = context.get("content", "")
 
-        # Analyze manuscript structure
-        sections = manuscript_analyzer.analyze_structure(manuscript_content)
-        context["sections"] = sections
+        self._log_start(submission_id, manuscript_content)
 
+        try:
+            sections = manuscript_analyzer.analyze_structure(manuscript_content)
+            context["sections"] = sections
+
+            prompt = self.build_prompt(context)
+            response_text = await self._get_response(prompt, manuscript_content)
+
+            critique = self.parse_response(response_text)
+
+            self._log_completion(submission_id, critique)
+        except Exception as e:
+            self.logger.error(
+                e,
+                additional_info={
+                    "agent_type": self.agent_type,
+                    "submission_id": submission_id,
+                    "action": "task_execution",
+                },
+            )
+            raise
+
+        self._enhance_findings_with_positions(critique, manuscript_content, sections)
+        return critique
+
+    def _log_start(self, submission_id: str, manuscript_content: str) -> None:
+        self.logger.log_agent_activity(
+            agent_type=self.agent_type,
+            action="task_started",
+            submission_id=submission_id,
+            additional_info={"content_length": len(manuscript_content)},
+        )
+
+    async def _get_response(self, prompt: str, manuscript_content: str) -> str:
         # Use enhanced analysis for longer manuscripts
         if len(manuscript_content.split()) > 3000:
             from app.services.enhanced_llm_service import enhanced_llm_service
 
-            prompt = self.build_prompt(context)
             response = await enhanced_llm_service.multi_pass_analysis(
                 prompt, "detailed"
             )
+            return (
+                response
+                if isinstance(response, str)
+                else getattr(response, "text", str(response))
+            )
         else:
-            prompt = self.build_prompt(context)
             response = await self.model.generate_content_async(prompt)
-            response = response.text
+            return getattr(response, "text", response)
 
-        critique = self.parse_response(response)
+    def _log_completion(self, submission_id: str, critique: AgentCritique) -> None:
+        self.logger.log_agent_activity(
+            agent_type=self.agent_type,
+            action="task_completed",
+            submission_id=submission_id,
+            additional_info={
+                "score": critique.score,
+                "findings_count": len(critique.findings),
+                "confidence": critique.confidence,
+            },
+        )
 
-        # Enhance findings with line numbers and sections
+    def _enhance_findings_with_positions(
+        self, critique: AgentCritique, manuscript_content: str, sections: Dict[str, Any]
+    ) -> None:
         for finding in critique.findings:
-            if hasattr(finding, "highlights"):
-                validated_highlights = []
-                for highlight in finding.highlights:
-                    start, end = TextAnalyzer.find_text_position(
-                        manuscript_content, highlight.text
-                    )
-                    line_num = manuscript_analyzer.find_line_number(
-                        manuscript_content, highlight.text
-                    )
-                    section = (
-                        manuscript_analyzer.get_section_for_line(sections, line_num)
-                        if line_num
-                        else "unknown"
-                    )
+            if not hasattr(finding, "highlights"):
+                continue
 
-                    if start != 0 or end != 0:
-                        highlight.start_pos = start
-                        highlight.end_pos = end
-                        highlight.context = f"Line {line_num}, {section.title()} section: {TextAnalyzer.extract_context(manuscript_content, start, end)}"
-                        validated_highlights.append(highlight)
-                finding.highlights = validated_highlights
+            validated_highlights = []
+            for highlight in finding.highlights:
+                start, end = TextAnalyzer.find_text_position(
+                    manuscript_content, highlight.text
+                )
+                line_num = manuscript_analyzer.find_line_number(
+                    manuscript_content, highlight.text
+                )
+                section = (
+                    manuscript_analyzer.get_section_for_line(sections, line_num)
+                    if line_num
+                    else "unknown"
+                )
 
-        return critique
+                if start != 0 or end != 0:
+                    highlight.start_pos = start
+                    highlight.end_pos = end
+                    highlight.context = f"Line {line_num}, {section.title()} section: {TextAnalyzer.extract_context(manuscript_content, start, end)}"
+                    validated_highlights.append(highlight)
+
+            finding.highlights = validated_highlights
 
     def build_prompt(self, context: Dict[str, Any]) -> str:
         system_prompt = self.get_system_prompt()

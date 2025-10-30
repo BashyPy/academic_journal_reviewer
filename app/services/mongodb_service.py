@@ -4,6 +4,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import settings
+from app.utils.logger import get_logger
 
 
 class MongoDBService:
@@ -12,10 +13,23 @@ class MongoDBService:
         self.db = self.client[settings.MONGODB_DATABASE]
         self.submissions = self.db.submissions
         self.agent_tasks = self.db.agent_tasks
+        self.logger = get_logger()
 
     async def save_submission(self, submission_data: Dict[str, Any]) -> str:
-        result = await self.submissions.insert_one(submission_data)
-        return str(result.inserted_id)
+        try:
+            result = await self.submissions.insert_one(submission_data)
+            submission_id = str(result.inserted_id)
+            self.logger.debug(
+                f"Submission saved: {submission_id}",
+                additional_info={
+                    "submission_id": submission_id,
+                    "title": submission_data.get("title", "unknown"),
+                },
+            )
+            return submission_id
+        except Exception as e:
+            self.logger.error(e, additional_info={"operation": "save_submission"})
+            raise
 
     async def get_submission(self, submission_id: str) -> Optional[Dict[str, Any]]:
         doc = await self.submissions.find_one({"_id": ObjectId(submission_id)})

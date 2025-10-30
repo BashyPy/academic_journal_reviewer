@@ -13,3 +13,6 @@ reviews
 *.log
 *.bak
 diagrams/enhanced
+docs
+logging_examples.py
+test_api.py

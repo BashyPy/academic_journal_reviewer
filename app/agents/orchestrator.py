@@ -11,6 +11,7 @@ from app.agents.specialist_agents import (
 from app.agents.synthesis_agent import SynthesisAgent
 from app.models.schemas import AgentType, TaskStatus
 from app.services.mongodb_service import mongodb_service
+from app.utils.logger import get_logger
 
 
 class OrchestratorAgent:
@@ -22,28 +23,53 @@ class OrchestratorAgent:
             AgentType.ETHICS: EthicsAgent(),
         }
         self.synthesis_agent = SynthesisAgent()
+        self.logger = get_logger()
 
     async def process_submission(self, submission_id: str) -> Dict[str, Any]:
-        submission = await mongodb_service.get_submission(submission_id)
-        if not submission:
-            raise ValueError(f"Submission {submission_id} not found")
-
-        tasks = await self.create_agent_tasks(submission_id, submission)
-        await self.execute_specialist_agents(tasks)
-        await self.wait_for_completion(submission_id)
-
-        final_report = await self.execute_synthesis(submission_id)
-
-        await mongodb_service.update_submission(
-            submission_id,
-            {
-                "final_report": final_report,
-                "status": TaskStatus.COMPLETED.value,
-                "completed_at": datetime.now(),
-            },
+        self.logger.log_review_process(
+            submission_id=submission_id,
+            stage="orchestration_started",
+            status="processing",
         )
 
-        return {"status": "completed", "submission_id": submission_id}
+        try:
+            submission = await mongodb_service.get_submission(submission_id)
+            if not submission:
+                raise ValueError(f"Submission {submission_id} not found")
+
+            tasks = await self.create_agent_tasks(submission_id, submission)
+            await self.execute_specialist_agents(tasks)
+            await self.wait_for_completion(submission_id)
+
+            final_report = await self.execute_synthesis(submission_id)
+
+            await mongodb_service.update_submission(
+                submission_id,
+                {
+                    "final_report": final_report,
+                    "status": TaskStatus.COMPLETED.value,
+                    "completed_at": datetime.now(),
+                },
+            )
+
+            self.logger.log_review_process(
+                submission_id=submission_id,
+                stage="orchestration_completed",
+                status="success",
+                additional_info={"report_length": len(final_report)},
+            )
+
+            return {"status": "completed", "submission_id": submission_id}
+
+        except Exception as e:
+            self.logger.error(
+                e,
+                additional_info={
+                    "submission_id": submission_id,
+                    "stage": "orchestration",
+                },
+            )
+            raise
 
     async def create_agent_tasks(
         self, submission_id: str, submission: Dict[str, Any]
@@ -109,18 +135,21 @@ class OrchestratorAgent:
 
         await asyncio.gather(*[execute_task(task_id) for task_id in task_ids])
 
-    async def wait_for_completion(self, submission_id: str, timeout: int = 300):
-        start_time = datetime.now()
-        while (datetime.now() - start_time).seconds < timeout:
-            tasks = await mongodb_service.get_agent_tasks(submission_id)
-            if all(
-                task["status"] in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
-                for task in tasks
-            ):
-                return
-            await asyncio.sleep(5)
-
-        raise TimeoutError("Agent tasks did not complete within timeout")
+    async def wait_for_completion(self, submission_id: str):
+        try:
+            # Use an asyncio timeout context manager to bound the polling loop duration.
+            async with asyncio.timeout(300):
+                while True:
+                    tasks = await mongodb_service.get_agent_tasks(submission_id)
+                    if all(
+                        task["status"]
+                        in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
+                        for task in tasks
+                    ):
+                        return
+                    await asyncio.sleep(5)
+        except asyncio.TimeoutError:
+            raise TimeoutError("Agent tasks did not complete within timeout")
 
     async def execute_synthesis(self, submission_id: str) -> str:
         tasks = await mongodb_service.get_agent_tasks(submission_id)
