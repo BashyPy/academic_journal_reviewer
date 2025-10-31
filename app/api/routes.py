@@ -17,8 +17,9 @@ from app.models.responses import (
 )
 from app.models.schemas import TaskStatus
 from app.services.disclaimer_service import disclaimer_service
-from app.services.document_parser import document_parser
 from app.services.document_cache_service import document_cache_service
+from app.services.document_parser import document_parser
+from app.services.langchain_service import langchain_service
 from app.services.mongodb_service import mongodb_service
 from app.services.pdf_generator import pdf_generator
 from app.utils.logger import get_logger
@@ -145,7 +146,7 @@ async def _read_and_validate_content(
     "/submissions/upload",
     response_model=UploadResponse,
     summary="Upload Manuscript",
-    description="Upload a manuscript (PDF/DOCX) for AI-powered academic review. Initiates multi-agent analysis.",
+    description="Upload a manuscript (PDF/DOCX) for AI-powered academic review. Initiates LangGraph workflow with parallel agent processing.",
 )
 async def upload_manuscript(
     file: UploadFile = File(
@@ -179,19 +180,21 @@ async def upload_manuscript(
 
         parsed_data = document_parser.parse_document(content, safe_filename)
         document_content = parsed_data.get("content", "")
-        
+
         # Check if identical document already exists
-        cached_submission = await document_cache_service.get_cached_submission(document_content)
+        cached_submission = await document_cache_service.get_cached_submission(
+            document_content
+        )
         if cached_submission:
             logger.info(
                 f"Found cached submission for identical content: {safe_filename}",
-                additional_info={"cached_id": cached_submission.get("_id")}
+                additional_info={"cached_id": cached_submission.get("_id")},
             )
             return {
                 "submission_id": str(cached_submission["_id"]),
                 "status": cached_submission["status"],
                 "message": "Identical document found. Using cached results.",
-                "cached": True
+                "cached": True,
             }
 
         submission_data = {
@@ -207,14 +210,17 @@ async def upload_manuscript(
         }
 
         submission_id = await mongodb_service.save_submission(submission_data)
-        
+
         # Cache the submission for future identical uploads
-        await document_cache_service.cache_submission(document_content, {
-            "_id": submission_id,
-            "title": safe_filename,
-            "status": TaskStatus.PENDING.value,
-            "created_at": datetime.now(timezone.utc)
-        })
+        await document_cache_service.cache_submission(
+            document_content,
+            {
+                "_id": submission_id,
+                "title": safe_filename,
+                "status": TaskStatus.PENDING.value,
+                "created_at": datetime.now(timezone.utc),
+            },
+        )
 
         # Log the completed upload step (best-effort)
         try:
@@ -245,8 +251,8 @@ async def upload_manuscript(
         return {
             "submission_id": submission_id,
             "status": "processing",
-            "message": "Manuscript uploaded successfully. Review process started.",
-            "cached": False
+            "message": "Manuscript uploaded successfully. LangGraph workflow initiated.",
+            "cached": False,
         }
     except HTTPException:
         raise
@@ -372,59 +378,46 @@ async def get_submission(
     "/submissions/{submission_id}/status",
     response_model=StatusResponse,
     summary="Get Review Status",
-    description="Get real-time progress of specialist agents (Methodology, Literature, Clarity, Ethics).",
+    description="Get real-time progress of LangGraph workflow processing.",
 )
 async def get_submission_status(submission_id: str):
     """
     Get real-time review progress status.
 
-    Returns the current status of the submission and progress of each
-    specialist agent (Methodology, Literature, Clarity, Ethics).
-    Useful for tracking review progress in real-time.
+    Returns the current status of the submission processed by LangGraph workflow.
+    The workflow handles all specialist agents internally.
 
     Args:
         submission_id: Unique identifier for the submission
 
-    Example Request:
-        GET /api/v1/submissions/507f1f77bcf86cd799439011/status
-
     Returns:
-        dict: Status summary with agent task progress
-
-    Example Response:
-        {
-            "submission_id": "507f1f77bcf86cd799439011",
-            "status": "pending",
-            "tasks": [
-                {"agent_type": "methodology", "status": "completed"},
-                {"agent_type": "literature", "status": "running"},
-                {"agent_type": "clarity", "status": "pending"},
-                {"agent_type": "ethics", "status": "pending"}
-            ]
-        }
-
-    Raises:
-        HTTPException: 404 if submission not found, 500 for server errors
+        dict: Status summary with workflow progress
     """
-    # Validate submission_id format
     if not submission_id or len(submission_id.strip()) == 0:
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
+    
     try:
-        logger.info(f"Status request for submission: {submission_id}")
-
         submission = await mongodb_service.get_submission(submission_id)
         if not submission:
             raise HTTPException(status_code=404, detail=SUBMISSION_NOT_FOUND)
 
-        tasks = await mongodb_service.get_agent_tasks(submission_id)
+        # LangGraph workflow manages all agents internally
+        status = submission["status"]
+        
+        # Provide workflow-based task representation
+        if status == TaskStatus.PENDING.value:
+            tasks = [{"agent_type": "workflow", "status": "pending"}]
+        elif status == TaskStatus.RUNNING.value:
+            tasks = [{"agent_type": "workflow", "status": "running"}]
+        elif status == TaskStatus.COMPLETED.value:
+            tasks = [{"agent_type": "workflow", "status": "completed"}]
+        else:
+            tasks = [{"agent_type": "workflow", "status": "failed"}]
 
         return {
             "submission_id": submission_id,
-            "status": submission["status"],
-            "tasks": [
-                {"agent_type": task["agent_type"], "status": task["status"]}
-                for task in tasks
-            ],
+            "status": status,
+            "tasks": tasks,
         }
     except HTTPException:
         raise
@@ -627,6 +620,37 @@ async def download_report_pdf(submission_id: str):
     except Exception as e:
         logger.error(e, additional_info={"submission_id": submission_id})
         raise HTTPException(status_code=500, detail="Failed to generate PDF report")
+
+
+@router.get(
+    "/system/langgraph-status",
+    summary="LangGraph System Status",
+    description="Check LangGraph and LangChain integration status.",
+)
+async def get_langgraph_status():
+    """Check if LangGraph and LangChain services are properly integrated."""
+    try:
+        # Test LangChain service availability
+        langchain_available = hasattr(langchain_service, 'models') and bool(langchain_service.models)
+        
+        # Test workflow availability
+        from app.services.langgraph_workflow import langgraph_workflow
+        workflow_available = hasattr(langgraph_workflow, 'workflow') and langgraph_workflow.workflow is not None
+        
+        return {
+            "langgraph_integrated": True,
+            "langchain_service": langchain_available,
+            "workflow_available": workflow_available,
+            "status": "operational" if (langchain_available and workflow_available) else "partial",
+            "message": "LangGraph and LangChain successfully integrated"
+        }
+    except Exception as e:
+        logger.error(f"LangGraph status check failed: {e}")
+        return {
+            "langgraph_integrated": False,
+            "status": "error",
+            "message": f"Integration error: {str(e)}"
+        }
 
 
 def _convert_to_timezone(dt: datetime, tz_string: str) -> datetime:

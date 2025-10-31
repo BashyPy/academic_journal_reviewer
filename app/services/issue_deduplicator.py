@@ -51,23 +51,25 @@ class IssueDeduplicator:
         """Remove duplicate issues based on description similarity."""
         unique_issues = []
         for issue in issues:
-            description = issue.get('description', '')
+            description = issue.get("description", "")
             is_duplicate = False
-            
+
             for existing in unique_issues:
-                existing_desc = existing.get('description', '')
+                existing_desc = existing.get("description", "")
                 if self._is_similar(description, existing_desc):
                     # Keep the one with higher severity
-                    severity_order = {'high': 3, 'medium': 2, 'low': 1}
-                    if severity_order.get(issue.get('severity', 'low'), 1) > severity_order.get(existing.get('severity', 'low'), 1):
+                    severity_order = {"high": 3, "medium": 2, "low": 1}
+                    if severity_order.get(
+                        issue.get("severity", "low"), 1
+                    ) > severity_order.get(existing.get("severity", "low"), 1):
                         unique_issues.remove(existing)
                         unique_issues.append(issue)
                     is_duplicate = True
                     break
-            
+
             if not is_duplicate:
                 unique_issues.append(issue)
-        
+
         return unique_issues
 
     def deduplicate_findings(

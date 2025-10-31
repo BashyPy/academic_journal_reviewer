@@ -1,8 +1,0 @@
-dyld[73901]: Library not loaded: @executable_path/../lib/libpython3.11.dylib
-  Referenced from: <4C4C44E4-5555-3144-A1CF-C981736B9FEB> /Users/muhammad/Library/Application Support/pypoetry/venv/bin/python3.11
-  Reason: tried: '/Users/muhammad/Library/Application Support/pypoetry/venv/lib/libpython3.11.dylib' (no such file)
-
-Traceback:
-
-  File "<stdin>", line 937, in main
-  File "<stdin>", line 576, in run

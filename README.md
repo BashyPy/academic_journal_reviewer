@@ -259,6 +259,8 @@ Content-Type: multipart/form-data
 file: manuscript.pdf (or .docx)
 ```
 
+*Initiates LangGraph workflow with parallel agent processing*
+
 #### Get Review Status
 
 ```http
@@ -282,6 +284,14 @@ GET /api/v1/submissions/{submission_id}/download
 ```http
 GET /disclaimer
 ```
+
+#### LangGraph System Status
+
+```http
+GET /api/v1/system/langgraph-status
+```
+
+*Check LangGraph and LangChain integration status*
 
 ## 🔧 Configuration
 
@@ -382,20 +392,28 @@ pytest --cov=app tests/
 
 ## 🚀 Deployment
 
-### Docker Deployment
-
+### Development
 ```bash
-docker build -t aaris .
-docker run -p 8000:8000 --env-file .env aaris
+docker-compose up -d
 ```
 
-### Production Considerations
+### Production
+```bash
+# Quick deploy
+./deploy.sh
 
-- Use MongoDB Atlas for production database
-- Configure proper CORS settings
-- Set up SSL/TLS certificates
-- Implement rate limiting
-- Monitor API usage and costs
+# Or manual
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production setup.
+
+### Production Features
+- Multi-worker Uvicorn
+- MongoDB authentication
+- Nginx reverse proxy
+- Health checks
+- Security hardening
 
 ## 🤝 Contributing
 

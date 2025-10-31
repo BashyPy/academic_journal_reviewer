@@ -3,8 +3,8 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router
 from app.api.cache_routes import router as cache_router
+from app.api.routes import router
 from app.utils.logger import get_logger
 
 # Initialize logger
@@ -62,11 +62,17 @@ async def log_requests(request: Request, call_next):
         raise
 
 
+# Production CORS configuration
+allowed_origins = [
+    "http://localhost:3000",  # Development frontend
+    "https://yourdomain.com",  # Production frontend
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 

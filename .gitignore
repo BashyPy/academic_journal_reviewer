@@ -1,6 +1,7 @@
 __pycache__/
 .venv
 .env
+.env.production
 reviews
 .history
 .ipynb_checkpoints
@@ -23,3 +24,8 @@ htmlcov
 .pytest_cache
 dist/
 build/
+.env.production
+logs/
+Reviews/
+*.log
+ssl/
