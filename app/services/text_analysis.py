@@ -1,3 +1,4 @@
+import html
 import re
 from typing import List, Tuple
 
@@ -5,7 +6,24 @@ from typing import List, Tuple
 class TextAnalyzer:
     @staticmethod
     def find_text_position(full_text: str, target_text: str) -> Tuple[int, int]:
-        """Find start and end positions of target text in full text."""
+        """Find start and end positions of target text in full_text.
+
+        Returns a tuple (start, end) or (-1, -1) if not found or on invalid input.
+
+        Note: This function performs in-memory string matching only and does NOT
+        construct or execute any database queries. Do not use return values from
+        this function directly to build SQL/DB queries; always use parameterized
+        queries or proper DB sanitization in database layers.
+        """
+        # Validate inputs
+        if not isinstance(full_text, str) or not isinstance(target_text, str):
+            return -1, -1
+
+        if not full_text or not target_text:
+            return -1, -1
+
+        # Perform matching on raw text (do not escape before matching, escaping
+        # is for output contexts such as HTML)
         start = full_text.find(target_text)
         if start == -1:
             # Try fuzzy matching for slight variations
@@ -13,52 +31,125 @@ class TextAnalyzer:
 
         if start != -1:
             return start, start + len(target_text)
-        return 0, 0
+        return -1, -1
 
     @staticmethod
     def _fuzzy_find(full_text: str, target_text: str) -> int:
         """Find text with minor variations (whitespace, punctuation)."""
-        # Normalize whitespace and punctuation for matching
-        normalized_target = re.sub(r"\s+", " ", target_text.strip())
-        normalized_full = re.sub(r"\s+", " ", full_text)
+        # Input validation
+        if not isinstance(full_text, str) or not isinstance(target_text, str):
+            return -1
 
-        return normalized_full.find(normalized_target)
+        if not full_text or not target_text:
+            return -1
+
+        try:
+            # Normalize whitespace for matching (case-insensitive)
+            normalized_target = re.sub(r"\s+", " ", target_text.strip()).lower()
+            normalized_full = re.sub(r"\s+", " ", full_text).lower()
+
+            # Limit search size to prevent performance issues
+            if len(normalized_full) > 100000:  # 100KB limit
+                normalized_full = normalized_full[:100000]
+
+            return normalized_full.find(normalized_target)
+        except re.error:
+            return -1
 
     @staticmethod
     def extract_context(
         full_text: str, start_pos: int, end_pos: int, context_length: int = 100
     ) -> str:
         """Extract surrounding context for highlighted text."""
+        # Input validation
+        if not isinstance(full_text, str) or not full_text:
+            return ""
+
+        if not isinstance(start_pos, int) or not isinstance(end_pos, int):
+            return ""
+
+        # If not found or invalid positions, return empty
+        if start_pos < 0 or end_pos <= start_pos:
+            return ""
+
+        # Limit context length for security
+        context_length = min(max(context_length, 0), 500)
+
         context_start = max(0, start_pos - context_length)
         context_end = min(len(full_text), end_pos + context_length)
 
-        context = full_text[context_start:context_end]
+        try:
+            context = full_text[context_start:context_end]
 
-        # Add ellipsis if truncated
-        if context_start > 0:
-            context = "..." + context
-        if context_end < len(full_text):
-            context = context + "..."
+            # Escape HTML to prevent XSS in output contexts
+            context = html.escape(context)
 
-        return context
+            # Add ellipsis if truncated
+            if context_start > 0:
+                context = "..." + context
+            if context_end < len(full_text):
+                context = context + "..."
+
+            return context
+        except (IndexError, MemoryError):
+            return ""
+
+    @staticmethod
+    @staticmethod
+    def _is_valid_highlight_item(highlight: object) -> bool:
+        return (
+            isinstance(highlight, dict)
+            and isinstance(highlight.get("text", ""), str)
+            and bool(highlight.get("text", "").strip())
+        )
+
+    @staticmethod
+    def _build_safe_highlight(
+        full_text: str, highlight: dict, start: int, end: int
+    ) -> dict:
+        safe = {
+            "text": html.escape(highlight["text"]),
+            "start_pos": start,
+            "end_pos": end,
+            "context": TextAnalyzer.extract_context(full_text, start, end),
+        }
+        for key, value in highlight.items():
+            if key in safe:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                safe[key] = html.escape(value) if isinstance(value, str) else value
+        return safe
 
     @staticmethod
     def validate_highlights(full_text: str, highlights: List[dict]) -> List[dict]:
         """Validate and correct highlight positions."""
-        validated = []
+        if not isinstance(full_text, str) or not isinstance(highlights, list):
+            return []
 
-        for highlight in highlights:
-            text = highlight.get("text", "")
-            if not text:
+        if not full_text or not highlights:
+            return []
+
+        validated: List[dict] = []
+        max_highlights = 100
+
+        for highlight in highlights[:max_highlights]:
+            if not TextAnalyzer._is_valid_highlight_item(highlight):
                 continue
 
-            start, end = TextAnalyzer.find_text_position(full_text, text)
-            if start != 0 or end != 0:
-                highlight["start_pos"] = start
-                highlight["end_pos"] = end
-                highlight["context"] = TextAnalyzer.extract_context(
-                    full_text, start, end
-                )
-                validated.append(highlight)
+            text = highlight["text"]
+            if len(text) > 1000:
+                continue
+
+            try:
+                start, end = TextAnalyzer.find_text_position(full_text, text)
+            except Exception:
+                continue
+
+            if start == -1 or end == -1:
+                continue
+
+            validated.append(
+                TextAnalyzer._build_safe_highlight(full_text, highlight, start, end)
+            )
 
         return validated

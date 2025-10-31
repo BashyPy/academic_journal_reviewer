@@ -2,7 +2,7 @@
 name = "academic-journal-reviewer"
 version = "0.1.0"
 description = "Agentic AI system for academic journal review"
-authors = ["Muhammad"]
+authors = ["Muhammad Abiodun SULAIMAN"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

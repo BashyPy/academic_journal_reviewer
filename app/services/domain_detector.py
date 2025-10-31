@@ -1,9 +1,12 @@
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Set, Tuple
 
 
 class DomainDetector:
-    def __init__(self):
-        self.domain_keywords = {
+    def __init__(self) -> None:
+        # Raw keyword lists (kept for maintainability); processing below creates
+        # faster lookup structures used at runtime.
+        self.domain_keywords: Dict[str, List[str]] = {
             "medical": [
                 "patient",
                 "clinical",
@@ -237,7 +240,8 @@ class DomainDetector:
             ],
         }
 
-        self.domain_weights = {
+        # Weights remain explicit for clarity and easy tuning
+        self.domain_weights: Dict[str, float] = {
             "medical": 0.35,
             "psychology": 0.25,
             "computer_science": 0.3,
@@ -261,28 +265,98 @@ class DomainDetector:
             "biomedicine": 0.35,
         }
 
-    def detect_domain(self, submission: Dict[str, Any]) -> Dict[str, Any]:
-        content = (
-            submission.get("content", "") + " " + submission.get("title", "")
-        ).lower()
+        # Precompute lookup structures for fast matching
+        self._keyword_wordsets: Dict[str, Set[str]] = {}
+        self._keyword_phrases: Dict[str, Set[Tuple[str, ...]]] = {}
+        self._max_phrase_len: int = 1
+        self._build_keyword_lookups()
 
-        domain_scores = {}
+    def _build_keyword_lookups(self) -> None:
         for domain, keywords in self.domain_keywords.items():
-            score = sum(1 for keyword in keywords if keyword in content)
-            domain_scores[domain] = score * self.domain_weights.get(domain, 0.25)
+            wordset: Set[str] = set()
+            phrases: Set[Tuple[str, ...]] = set()
+            for kw in keywords:
+                parts = tuple(kw.lower().split())
+                if len(parts) == 1:
+                    wordset.add(parts[0])
+                else:
+                    phrases.add(parts)
+                    if len(parts) > self._max_phrase_len:
+                        self._max_phrase_len = len(parts)
+            self._keyword_wordsets[domain] = wordset
+            self._keyword_phrases[domain] = phrases
 
-        primary_domain = (
-            max(domain_scores, key=domain_scores.get) if domain_scores else "general"
-        )
-        confidence = domain_scores.get(primary_domain, 0) / len(
-            self.domain_keywords.get(primary_domain, [])
-        )
+    def detect_domain(self, submission: Dict[str, Any]) -> Dict[str, Any]:
+        tokens = self._tokenize_submission(submission)
+        if not tokens:
+            return {"primary_domain": "general", "confidence": 0.0, "all_scores": {}}
+
+        word_set = set(tokens)
+        ngram_sets = self._build_ngram_sets_from_tokens(tokens)
+
+        domain_scores: Dict[str, float] = {
+            domain: self._score_domain(domain, word_set, ngram_sets)
+            for domain in self.domain_keywords.keys()
+        }
+
+        if domain_scores:
+            primary_domain = max(domain_scores, key=domain_scores.get)
+            denom = max(1, len(self.domain_keywords.get(primary_domain, [])))
+            confidence = domain_scores.get(primary_domain, 0.0) / denom
+        else:
+            primary_domain = "general"
+            confidence = 0.0
 
         return {
             "primary_domain": primary_domain,
             "confidence": min(confidence, 1.0),
             "all_scores": domain_scores,
         }
+
+    def _tokenize_submission(self, submission: Dict[str, Any]) -> List[str]:
+        combined = (
+            submission.get("content", "") + " " + submission.get("title", "")
+        ).lower()
+        return re.findall(r"\w+", combined)
+
+    def _build_ngram_sets_from_tokens(self, tokens: List[str]) -> Dict[int, Set[str]]:
+        ngram_sets: Dict[int, Set[str]] = {}
+        # range end is exclusive; mirror original behavior: 2 .. max(self._max_phrase_len)
+        for n in range(2, max(2, self._max_phrase_len + 1)):
+            ngrams = {" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)}
+            ngram_sets[n] = ngrams
+        return ngram_sets
+
+    def _score_domain(
+        self, domain: str, word_set: Set[str], ngram_sets: Dict[int, Set[str]]
+    ) -> float:
+        count = 0
+        ks = self._keyword_wordsets.get(domain, set())
+        if ks:
+            count += len(word_set & ks)
+
+        phrases = self._keyword_phrases.get(domain, set())
+        if phrases:
+            # split phrases into single-word and multi-word groups to simplify logic
+            single_word_phrases: Set[str] = set()
+            multi_phrase_map: Dict[int, Set[str]] = {}
+            for phrase in phrases:
+                if len(phrase) == 1:
+                    single_word_phrases.add(phrase[0])
+                else:
+                    phrase_str = " ".join(phrase)
+                    multi_phrase_map.setdefault(len(phrase), set()).add(phrase_str)
+
+            if single_word_phrases:
+                count += len(word_set & single_word_phrases)
+
+            for n, phrase_set in multi_phrase_map.items():
+                ngrams = ngram_sets.get(n, set())
+                if ngrams:
+                    count += len(phrase_set & ngrams)
+
+        weight = float(self.domain_weights.get(domain, 0.25))
+        return count * weight
 
     def get_domain_specific_weights(self, domain: str) -> Dict[str, float]:
         domain_weights = {

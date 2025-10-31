@@ -87,14 +87,38 @@ class GuardrailMiddleware:
 
 
 def apply_review_guardrails(review_content: str) -> str:
-    """Apply guardrails to review output before returning to user"""
-    violations = guardrails.validate_review_output(review_content)
+    """Apply guardrails to review output before returning to user with robust error handling."""
+    try:
+        violations = guardrails.validate_review_output(review_content) or []
 
-    # Log any violations
-    if violations:
-        logger.info(f"Review guardrail violations: {[v.message for v in violations]}")
+        # Ensure violations is a list-like structure
+        if not isinstance(violations, list):
+            try:
+                violations = list(violations)
+            except Exception:
+                violations = [violations]
 
-    # Sanitize content if needed
-    sanitized_content = guardrails.sanitize_content(review_content, violations)
+        # Log any violations safely
+        if violations:
+            logger.info(
+                "Review guardrail violations: %s",
+                [getattr(v, "message", repr(v)) for v in violations],
+            )
 
-    return sanitized_content
+        # Sanitize content if needed
+        sanitized_content = guardrails.sanitize_content(review_content, violations)
+
+        # If sanitization fails or returns None, fallback to original content
+        if sanitized_content is None:
+            logger.warning(
+                "Guardrails returned None for sanitized content; returning original content."
+            )
+            return review_content
+
+        return sanitized_content
+
+    except Exception:
+        logger.exception(
+            "Unexpected error applying review guardrails; returning original content."
+        )
+        return review_content

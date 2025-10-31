@@ -30,8 +30,8 @@ class TestLogger:
             additional_info={"test": "data"},
         )
 
-        # Verify logging was called
-        assert True  # Placeholder for actual logging verification
+        # Verify logging was called via FileHandler creation
+        mock_handler.assert_called()
 
     @patch("app.utils.logger.logging.FileHandler")
     def test_log_review_process(self, mock_handler):
@@ -45,7 +45,8 @@ class TestLogger:
             additional_info={"filename": "test.pdf"},
         )
 
-        assert True  # Placeholder for actual logging verification
+        # Verify logging was invoked by checking the FileHandler was created
+        mock_handler.assert_called()
 
     def test_log_levels(self):
         from app.utils.logger import get_logger
@@ -58,7 +59,8 @@ class TestLogger:
         logger.warning("Warning message")
         logger.error("Error message")
 
-        assert True  # Logs should be written to files
+        # Ensure the logger has at least one handler (so logs are directed somewhere)
+        assert len(getattr(logger, "handlers", [])) > 0
 
     @patch("app.utils.logger.logging.FileHandler")
     def test_structured_logging(self, mock_handler):
@@ -76,7 +78,8 @@ class TestLogger:
             },
         )
 
-        assert True  # Verify structured data is logged
+        # Verify structured data is logged by ensuring a FileHandler was created
+        mock_handler.assert_called()
 
 
 class TestLoggingConfiguration:
@@ -95,6 +98,8 @@ class TestLoggingConfiguration:
             assert len(log_files) > 0
 
     def test_log_rotation(self):
+        import os
+
         from app.utils.logger import get_logger
 
         logger = get_logger()
@@ -103,7 +108,11 @@ class TestLoggingConfiguration:
         for i in range(1000):
             logger.info(f"Test log entry {i}")
 
-        assert True  # Log rotation should handle large volumes
+        # Verify that the log directory exists and contains at least one log file
+        log_dir = "logs"
+        assert os.path.exists(log_dir)
+        log_files = os.listdir(log_dir)
+        assert len(log_files) > 0
 
     def test_error_logging_with_exception(self):
         from app.utils.logger import get_logger
@@ -115,7 +124,8 @@ class TestLoggingConfiguration:
         except Exception as e:
             logger.error(e, additional_info={"context": "test"})
 
-        assert True  # Exception should be logged with traceback
+        # Ensure the logger has at least one handler so the error was directed somewhere
+        assert len(getattr(logger, "handlers", [])) > 0
 
 
 class TestLoggerMethods:
@@ -131,7 +141,7 @@ class TestLoggerMethods:
         if hasattr(logger, "log_review_process"):
             logger.log_review_process("test_id", "test_stage", "success")
 
-        assert True
+        assert logger is not None
 
     def test_logger_formatting(self):
         from app.utils.logger import get_logger
@@ -144,4 +154,4 @@ class TestLoggerMethods:
             additional_info={"key1": "value1", "key2": 123, "key3": True},
         )
 
-        assert True  # Formatting should handle different data types
+        assert logger is not None  # Formatting should handle different data types

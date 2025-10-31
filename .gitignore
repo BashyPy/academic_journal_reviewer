@@ -29,3 +29,5 @@ logs/
 Reviews/
 *.log
 ssl/
+verify_cleanup.py
+requirements-test.txt

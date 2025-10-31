@@ -13,17 +13,20 @@ An advanced AI-powered system for comprehensive academic manuscript review using
 
 ## 🚀 Key Features
 
-### Multi-Agent Architecture
+### LangGraph Workflow Architecture
 
-- **Orchestrator Agent**: Coordinates the entire review process
-- **Specialist Agents**: Methodology, Literature Review, Clarity, Ethics
-- **Synthesis Agent**: Compiles comprehensive final reports
+- **Orchestrator**: Coordinates LangGraph workflow execution
+- **LangGraph Workflow**: Parallel processing of all specialist analyses
+- **LangChain Service**: Multi-LLM support with RAG capabilities
 - **Domain Detection**: Automatically identifies academic discipline (21+ domains)
 
 ### Advanced Capabilities
 
+- **Parallel Processing**: All specialist agents run concurrently via LangGraph
+- **RAG Integration**: Semantic search and context retrieval with LangChain
+- **Multi-Model Consensus**: Critical decisions use multiple AI models
 - **Domain-Aware Reviews**: Tailored criteria for each academic field
-- **Issue Deduplication**: Eliminates redundant findings across agents
+- **Issue Deduplication**: Eliminates redundant findings across analyses
 - **Guardrails System**: Ensures ethical and professional output
 - **PDF Generation**: Professional, formatted review reports
 - **Multi-LLM Support**: OpenAI, Anthropic, Google Gemini, Groq
@@ -259,7 +262,7 @@ Content-Type: multipart/form-data
 file: manuscript.pdf (or .docx)
 ```
 
-*Initiates LangGraph workflow with parallel agent processing*
+Initiates LangGraph workflow with parallel agent processing
 
 #### Get Review Status
 
@@ -291,7 +294,7 @@ GET /disclaimer
 GET /api/v1/system/langgraph-status
 ```
 
-*Check LangGraph and LangChain integration status*
+Check LangGraph and LangChain integration status
 
 ## 🔧 Configuration
 
@@ -393,11 +396,13 @@ pytest --cov=app tests/
 ## 🚀 Deployment
 
 ### Development
+
 ```bash
 docker-compose up -d
 ```
 
 ### Production
+
 ```bash
 # Quick deploy
 ./deploy.sh
@@ -406,9 +411,10 @@ docker-compose up -d
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production setup.
+See [DEPLOYMENT.md](./docs/DEPLOYMENT.md) for detailed production setup.
 
 ### Production Features
+
 - Multi-worker Uvicorn
 - MongoDB authentication
 - Nginx reverse proxy

@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict
+from zoneinfo import ZoneInfo
 
 from app.models.schemas import TaskStatus
 from app.services.document_cache_service import document_cache_service
@@ -12,7 +13,9 @@ class OrchestratorAgent:
     def __init__(self):
         self.logger = get_logger()
 
-    async def process_submission(self, submission_id: str, timezone_str: str = "UTC") -> Dict[str, Any]:
+    async def process_submission(
+        self, submission_id: str, timezone_str: str = "UTC"
+    ) -> Dict[str, Any]:
         self.logger.log_review_process(
             submission_id=submission_id,
             stage="orchestration_started",
@@ -32,7 +35,13 @@ class OrchestratorAgent:
             # Use LangGraph workflow for processing
             final_report = await langgraph_workflow.execute_review(submission)
 
-            completed_at = datetime.now(timezone.utc)
+            # Resolve timezone from provided string, fallback to UTC on error
+            try:
+                tz = ZoneInfo(timezone_str)
+            except Exception:
+                tz = ZoneInfo("UTC")
+
+            completed_at = datetime.now(tz)
             await mongodb_service.update_submission(
                 submission_id,
                 {
@@ -41,7 +50,7 @@ class OrchestratorAgent:
                     "completed_at": completed_at,
                 },
             )
-            
+
             # Update document cache with completed results
             await document_cache_service.cache_submission(
                 submission["content"],
@@ -50,9 +59,9 @@ class OrchestratorAgent:
                     "title": submission["title"],
                     "status": TaskStatus.COMPLETED.value,
                     "final_report": final_report,
-                    "completed_at": completed_at
+                    "completed_at": completed_at,
                 },
-                ttl_hours=168  # Cache completed reviews for 7 days
+                ttl_hours=168,  # Cache completed reviews for 7 days
             )
 
             self.logger.log_review_process(
@@ -72,17 +81,22 @@ class OrchestratorAgent:
                     "stage": "orchestration",
                 },
             )
+            # Ensure a timezone-aware fallback for the failure timestamp as well
+            try:
+                err_tz = ZoneInfo(timezone_str)
+            except Exception:
+                err_tz = ZoneInfo("UTC")
+
             await mongodb_service.update_submission(
                 submission_id,
                 {
                     "status": TaskStatus.FAILED.value,
                     "error": str(e),
-                    "completed_at": datetime.now(timezone.utc),
+                    "completed_at": datetime.now(err_tz),
                 },
             )
             raise
-
-
+            raise
 
 
 orchestrator = OrchestratorAgent()

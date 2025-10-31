@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app.services.mongodb_service import mongodb_service
@@ -17,18 +17,22 @@ class DocumentCacheService:
         """Get cached submission by content hash."""
         content_hash = self._generate_content_hash(content)
 
+        # compute now once to avoid multiple evaluations and use projection to reduce
+        # data transferred from MongoDB (only fetch submission_data)
+        now = datetime.now(timezone.utc)
         cached_doc = await mongodb_service.db[self.collection_name].find_one(
-            {"content_hash": content_hash, "expires_at": {"$gt": datetime.now()}}
+            {"content_hash": content_hash, "expires_at": {"$gt": now}},
+            {"submission_data": 1, "_id": 0},
         )
 
-        return cached_doc["submission_data"] if cached_doc else None
+        return cached_doc.get("submission_data") if cached_doc else None
 
     async def cache_submission(
         self, content: str, submission_data: Dict[str, Any], ttl_hours: int = 168
     ) -> None:  # 7 days default
         """Cache submission data by content hash."""
         content_hash = self._generate_content_hash(content)
-        expires_at = datetime.now() + timedelta(hours=ttl_hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
 
         await mongodb_service.db[self.collection_name].update_one(
             {"content_hash": content_hash},
@@ -36,7 +40,7 @@ class DocumentCacheService:
                 "$set": {
                     "content_hash": content_hash,
                     "submission_data": submission_data,
-                    "created_at": datetime.now(),
+                    "created_at": datetime.now(timezone.utc),
                     "expires_at": expires_at,
                     "access_count": 1,
                 },

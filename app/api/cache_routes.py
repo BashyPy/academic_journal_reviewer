@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter
 
 from app.services.cache_service import cache_service
@@ -17,15 +19,21 @@ async def get_cache_stats():
     """Get cache statistics."""
     from app.services.mongodb_service import mongodb_service
 
-    total_entries = await mongodb_service.db["llm_cache"].count_documents({})
-    expired_entries = await mongodb_service.db["llm_cache"].count_documents(
-        {"expires_at": {"$lt": mongodb_service.get_current_time()}}
-    )
+    # Reuse current time and run DB calls concurrently to avoid sequential waits
+    now = mongodb_service.get_current_time()
+    llm_col = mongodb_service.db["llm_cache"]
+    doc_col = mongodb_service.db["document_cache"]
 
-    # Document cache stats
-    doc_total = await mongodb_service.db["document_cache"].count_documents({})
-    doc_expired = await mongodb_service.db["document_cache"].count_documents(
-        {"expires_at": {"$lt": mongodb_service.get_current_time()}}
+    # Use estimated_document_count for fast total estimates and count_documents for expired counts.
+    tasks = [
+        llm_col.estimated_document_count(),
+        llm_col.count_documents({"expires_at": {"$lt": now}}),
+        doc_col.estimated_document_count(),
+        doc_col.count_documents({"expires_at": {"$lt": now}}),
+    ]
+
+    total_entries, expired_entries, doc_total, doc_expired = await asyncio.gather(
+        *tasks
     )
 
     return {

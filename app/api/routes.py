@@ -30,6 +30,9 @@ logger = get_logger()
 PDF_MEDIA_TYPE = "application/pdf"
 DOCX_EXTENSION = ".docx"
 
+# Maximum allowed upload size for manuscripts (50 MB)
+MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
 SUBMISSION_NOT_FOUND = "Submission not found"
 
 INVALID_SUBMISSION_ID = "Invalid submission ID"
@@ -39,11 +42,17 @@ INVALID_FILENAME = "Invalid filename"
 
 def _content_matches_extension(data: bytes, extension: str) -> bool:
     if extension == ".pdf":
-        if data[:4] == b"%PDF":
-            return True
-        return b"%PDF" in data[:1024]
+        # Use efficient startswith and bounded find to avoid creating slices of large byte arrays
+        try:
+            if data.startswith(b"%PDF"):
+                return True
+            # Search only within the first 1KB without slicing the byte string
+            return data.find(b"%PDF", 0, min(1024, len(data))) != -1
+        except Exception:
+            return False
     if extension == DOCX_EXTENSION:
         try:
+            # Use BytesIO for zip inspection; zipfile requires a file-like object
             bio = io.BytesIO(data)
             if zipfile.is_zipfile(bio):
                 with zipfile.ZipFile(bio) as zf:
@@ -55,7 +64,6 @@ def _content_matches_extension(data: bytes, extension: str) -> bool:
         except Exception:
             return False
     return False
-    return False
 
 
 def _sanitize_and_validate_filename(raw_filename: str):
@@ -64,22 +72,37 @@ def _sanitize_and_validate_filename(raw_filename: str):
     if "/" in raw_filename or "\\" in raw_filename or "\x00" in raw_filename:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
 
-    basename = Path(raw_filename).name
+    # Prevent path traversal: reject absolute paths or any parent-directory ("..") segments
+    raw_path = Path(raw_filename)
+    if raw_path.is_absolute() or any(part == ".." for part in raw_path.parts):
+        raise HTTPException(status_code=400, detail=INVALID_FILENAME)
+
+    basename = raw_path.name
     if not basename or basename in (".", ".."):
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
     if len(basename) > 255:
         raise HTTPException(status_code=400, detail="Filename too long")
 
-    p = Path(basename)
-    name_part = p.stem
-    ext = p.suffix.lower()
+    # Avoid using Path on user-provided basename to eliminate any chance of
+    # ambiguous path handling or platform-dependent path parsing that could be
+    # abused for path traversal; use a safe string-based split instead.
+    if "." in basename:
+        name_part, ext_part = basename.rsplit(".", 1)
+        ext = f".{ext_part.lower()}"
+    else:
+        name_part = basename
+        ext = ""
     safe_name_part = "".join(
         c for c in name_part if c.isalnum() or c in (" ", "-", "_")
     ).rstrip()
     if not safe_name_part:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
     safe_filename = f"{safe_name_part}{ext}"
-    if not safe_filename or safe_filename in (".", ".."):
+
+    # Final validation: ensure the resulting safe filename is non-empty and
+    # not a special dot-segment which could be abused or is meaningless.
+    # Use explicit checks with a short explanatory comment to improve readability.
+    if not safe_filename or safe_filename in {".", ".."}:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
 
     allowed_extensions = {".pdf", ".docx"}
@@ -88,13 +111,13 @@ def _sanitize_and_validate_filename(raw_filename: str):
             status_code=400,
             detail=f"Invalid file type. Only {', '.join(sorted(allowed_extensions))} files are allowed",
         )
+    
     return safe_filename, ext, basename
 
 
 async def _read_and_validate_content(
     upload_file: UploadFile, ext: str, raw_filename: str
 ):
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
     try:
         content = await upload_file.read()
     except Exception as e:
@@ -106,7 +129,7 @@ async def _read_and_validate_content(
 
     if not content:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
-    if len(content) > MAX_FILE_SIZE:
+    if len(content) > MAX_UPLOAD_FILE_SIZE:
         raise HTTPException(
             status_code=413, detail="File too large. Maximum size is 50MB"
         )
@@ -142,6 +165,103 @@ async def _read_and_validate_content(
     return content, content_type
 
 
+async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
+    """Internal helper that performs validation, parsing, persistence, caching and starts background processing."""
+    # Basic presence check and sanitize filename
+    if not file or not getattr(file, "filename", None):
+        raise HTTPException(status_code=400, detail="No file provided")
+    raw_filename = file.filename
+    safe_filename, ext, _ = _sanitize_and_validate_filename(raw_filename)
+
+    content, content_type = await _read_and_validate_content(file, ext, raw_filename)
+
+    logger.info(
+        f"Manuscript upload started: {safe_filename}",
+        additional_info={
+            "filename": safe_filename,
+            "content_type": content_type,
+            "file_size": len(content),
+        },
+    )
+
+    parsed_data = document_parser.parse_document(content, safe_filename)
+    document_content = parsed_data.get("content", "")
+
+    # Check if identical document already exists
+    cached_submission = await document_cache_service.get_cached_submission(
+        document_content
+    )
+    if cached_submission:
+        logger.info(
+            f"Found cached submission for identical content: {safe_filename}",
+            additional_info={"cached_id": cached_submission.get("_id")},
+        )
+        return {
+            "submission_id": str(cached_submission["_id"]),
+            "status": cached_submission["status"],
+            "message": "Identical document found. Using cached results.",
+            "cached": True,
+        }
+
+    submission_data = {
+        "title": safe_filename,
+        "content": document_content,
+        "file_metadata": {
+            **parsed_data.get("metadata", {}),
+            "original_filename": safe_filename,
+            "file_size": len(content),
+        },
+        "status": TaskStatus.PENDING.value,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+    submission_id = await mongodb_service.save_submission(submission_data)
+
+    # Cache the submission for future identical uploads
+    await document_cache_service.cache_submission(
+        document_content,
+        {
+            "_id": submission_id,
+            "title": safe_filename,
+            "status": TaskStatus.PENDING.value,
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
+
+    # Log the completed upload step (best-effort)
+    try:
+        logger.log_review_process(
+            submission_id=submission_id,
+            stage="upload_completed",
+            status="success",
+            additional_info={
+                "filename": safe_filename,
+                "file_size": len(content),
+                "content_length": len(parsed_data.get("content", "")),
+            },
+        )
+    except Exception:
+        logger.warning(
+            "Failed to write structured review process log",
+            additional_info={
+                "submission_id": submission_id,
+            },
+        )
+
+    # Kick off background processing without blocking
+    task = asyncio.create_task(
+        orchestrator.process_submission(submission_id, x_timezone)
+    )
+    task.add_done_callback(lambda t: None)
+
+    return {
+        "submission_id": submission_id,
+        "status": "processing",
+        "message": "Manuscript uploaded successfully. LangGraph workflow initiated.",
+        "cached": False,
+    }
+
+
 @router.post(
     "/submissions/upload",
     response_model=UploadResponse,
@@ -157,103 +277,9 @@ async def upload_manuscript(
         description="Client timezone (e.g., 'America/New_York', 'Europe/London')",
     ),
 ):
-    """Accept an uploaded manuscript, validate it, parse, store and start background review."""
+    """Thin wrapper that delegates heavy work to an internal helper to reduce coupling and improve testability."""
     try:
-        # Basic presence check and sanitize filename
-        if not file or not getattr(file, "filename", None):
-            raise HTTPException(status_code=400, detail="No file provided")
-        raw_filename = file.filename
-        safe_filename, ext, _ = _sanitize_and_validate_filename(raw_filename)
-
-        content, content_type = await _read_and_validate_content(
-            file, ext, raw_filename
-        )
-
-        logger.info(
-            f"Manuscript upload started: {safe_filename}",
-            additional_info={
-                "filename": safe_filename,
-                "content_type": content_type,
-                "file_size": len(content),
-            },
-        )
-
-        parsed_data = document_parser.parse_document(content, safe_filename)
-        document_content = parsed_data.get("content", "")
-
-        # Check if identical document already exists
-        cached_submission = await document_cache_service.get_cached_submission(
-            document_content
-        )
-        if cached_submission:
-            logger.info(
-                f"Found cached submission for identical content: {safe_filename}",
-                additional_info={"cached_id": cached_submission.get("_id")},
-            )
-            return {
-                "submission_id": str(cached_submission["_id"]),
-                "status": cached_submission["status"],
-                "message": "Identical document found. Using cached results.",
-                "cached": True,
-            }
-
-        submission_data = {
-            "title": safe_filename,
-            "content": document_content,
-            "file_metadata": {
-                **parsed_data.get("metadata", {}),
-                "original_filename": safe_filename,
-                "file_size": len(content),
-            },
-            "status": TaskStatus.PENDING.value,
-            "created_at": datetime.now(timezone.utc),
-        }
-
-        submission_id = await mongodb_service.save_submission(submission_data)
-
-        # Cache the submission for future identical uploads
-        await document_cache_service.cache_submission(
-            document_content,
-            {
-                "_id": submission_id,
-                "title": safe_filename,
-                "status": TaskStatus.PENDING.value,
-                "created_at": datetime.now(timezone.utc),
-            },
-        )
-
-        # Log the completed upload step (best-effort)
-        try:
-            logger.log_review_process(
-                submission_id=submission_id,
-                stage="upload_completed",
-                status="success",
-                additional_info={
-                    "filename": safe_filename,
-                    "file_size": len(content),
-                    "content_length": len(parsed_data.get("content", "")),
-                },
-            )
-        except Exception:
-            logger.warning(
-                "Failed to write structured review process log",
-                additional_info={
-                    "submission_id": submission_id,
-                },
-            )
-
-        # Kick off background processing without blocking
-        task = asyncio.create_task(
-            orchestrator.process_submission(submission_id, x_timezone)
-        )
-        task.add_done_callback(lambda t: None)
-
-        return {
-            "submission_id": submission_id,
-            "status": "processing",
-            "message": "Manuscript uploaded successfully. LangGraph workflow initiated.",
-            "cached": False,
-        }
+        return await _process_upload_manuscript(file, x_timezone)
     except HTTPException:
         raise
     except Exception as e:
@@ -318,7 +344,7 @@ async def get_submission(
     ),
 ):
     # Validate submission_id format
-    if not submission_id or len(submission_id.strip()) == 0:
+    if not submission_id or not submission_id.strip():
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
 
     """
@@ -393,9 +419,9 @@ async def get_submission_status(submission_id: str):
     Returns:
         dict: Status summary with workflow progress
     """
-    if not submission_id or len(submission_id.strip()) == 0:
+    if not submission_id or not submission_id.strip():
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
-    
+
     try:
         submission = await mongodb_service.get_submission(submission_id)
         if not submission:
@@ -403,16 +429,15 @@ async def get_submission_status(submission_id: str):
 
         # LangGraph workflow manages all agents internally
         status = submission["status"]
-        
-        # Provide workflow-based task representation
-        if status == TaskStatus.PENDING.value:
-            tasks = [{"agent_type": "workflow", "status": "pending"}]
-        elif status == TaskStatus.RUNNING.value:
-            tasks = [{"agent_type": "workflow", "status": "running"}]
-        elif status == TaskStatus.COMPLETED.value:
-            tasks = [{"agent_type": "workflow", "status": "completed"}]
-        else:
-            tasks = [{"agent_type": "workflow", "status": "failed"}]
+
+        # Provide workflow-based task representation using a mapping for clarity
+        status_map = {
+            TaskStatus.PENDING.value: "pending",
+            TaskStatus.RUNNING.value: "running",
+            TaskStatus.COMPLETED.value: "completed",
+        }
+        task_status = status_map.get(status, "failed")
+        tasks = [{"agent_type": "workflow", "status": task_status}]
 
         return {
             "submission_id": submission_id,
@@ -467,7 +492,7 @@ async def get_final_report(
                       500 for server errors
     """
     # Validate submission_id format
-    if not submission_id or len(submission_id.strip()) == 0:
+    if not submission_id or not submission_id.strip():
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
     try:
         submission = await mongodb_service.get_submission(submission_id)
@@ -541,6 +566,81 @@ def _parse_and_convert_completed_at(
         return None
 
 
+def _build_report_filename(submission: dict) -> str:
+    """Create a safe filename for the reviewed PDF based on submission metadata."""
+    original_filename = submission.get("file_metadata", {}).get(
+        "original_filename", submission.get("title", "manuscript")
+    )
+    # Remove extension if present
+    if "." in original_filename:
+        base_name = original_filename.rsplit(".", 1)[0]
+    else:
+        base_name = original_filename
+    # Keep only alphanumeric and a small set of safe extra characters
+    allowed_extra_chars = {" ", "-", "_"}
+    filtered_chars = (
+        ch for ch in base_name if ch.isalnum() or ch in allowed_extra_chars
+    )
+    safe_name = "".join(filtered_chars).rstrip() or "manuscript"
+    return f"{safe_name}_reviewed.pdf"
+
+
+def _ensure_buffer_seekable(buffer_like):
+    """Return a BytesIO that is seekable and positioned at 0, closing the original if needed."""
+    seek = getattr(buffer_like, "seek", None)
+    if callable(seek):
+        try:
+            buffer_like.seek(0)
+            return buffer_like
+        except Exception:
+            seek = None
+
+    # Fallback: read bytes and recreate a BytesIO, closing original if possible
+    try:
+        read = getattr(buffer_like, "read", None)
+        if callable(read):
+            pdf_bytes = buffer_like.read()
+        else:
+            pdf_bytes = getattr(buffer_like, "getvalue", lambda: b"")()
+    finally:
+        try:
+            close = getattr(buffer_like, "close", None)
+            if callable(close):
+                buffer_like.close()
+        except Exception:
+            pass
+
+    new_buf = io.BytesIO(pdf_bytes)
+    new_buf.seek(0)
+    # Free temporary bytes reference ASAP
+    del pdf_bytes
+    return new_buf
+
+
+def _build_content_disposition_header(filename: str, submission_id: str) -> dict:
+    """Construct a safe Content-Disposition header with ASCII fallback and RFC5987 encoding."""
+    try:
+        # Remove CRLF and control characters that could inject headers
+        sanitized = "".join(ch for ch in filename if ch not in ("\r", "\n"))
+        sanitized = sanitized.replace('"', "'")
+        try:
+            sanitized.encode("ascii")
+            filename_ascii = sanitized
+        except UnicodeEncodeError:
+            filename_ascii = "manuscript_reviewed.pdf"
+        from urllib.parse import quote as _quote
+
+        filename_star = _quote(sanitized, safe="")
+        content_disposition = f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{filename_star}"
+        return {"Content-Disposition": content_disposition}
+    except Exception as e:
+        logger.warning(
+            f"Failed to build Content-Disposition header: {e}",
+            additional_info={"submission_id": submission_id},
+        )
+        return {"Content-Disposition": 'attachment; filename="manuscript_reviewed.pdf"'}
+
+
 @router.get(
     "/submissions/{submission_id}/download",
     summary="Download PDF Report",
@@ -553,20 +653,9 @@ async def download_report_pdf(submission_id: str):
     Generates and returns a professionally formatted PDF document
     containing the complete review report with proper styling,
     headers, and manuscript information.
-
-    Args:
-        submission_id: Unique identifier for the submission
-
-    Returns:
-        StreamingResponse: PDF file download
-
-    Raises:
-        HTTPException: 404 if submission not found,
-                      400 if review not completed,
-                      500 for server errors
     """
     # Validate submission_id format
-    if not submission_id or len(submission_id.strip()) == 0:
+    if not submission_id or not submission_id.strip():
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
 
     try:
@@ -577,38 +666,15 @@ async def download_report_pdf(submission_id: str):
         if submission["status"] != TaskStatus.COMPLETED.value:
             raise HTTPException(status_code=400, detail="Review not completed yet")
 
-        # Generate PDF from the review content
+        # Generate PDF and normalize buffer
         pdf_buffer = pdf_generator.generate_review_pdf(
-            submission, submission["final_report"]
+            submission, submission.get("final_report", "")
         )
+        pdf_buffer = _ensure_buffer_seekable(pdf_buffer)
 
-        # Create safe filename using {file_name}_reviewed format
-        original_filename = submission.get("file_metadata", {}).get(
-            "original_filename", submission.get("title", "manuscript")
-        )
-        # Remove extension if present
-        if "." in original_filename:
-            base_name = original_filename.rsplit(".", 1)[0]
-        else:
-            base_name = original_filename
-        # Build a safe filename keeping alphanumeric, spaces, hyphens and underscores
-        safe_chars = []
-        for c in base_name:
-            if c.isalnum() or c in (" ", "-", "_"):
-                safe_chars.append(c)
-        safe_name = "".join(safe_chars).rstrip() or "manuscript"
-        filename = f"{safe_name}_reviewed.pdf"
-
-        # Ensure buffer is at start and stream it directly (avoids creating extra copies)
-        try:
-            pdf_buffer.seek(0)
-        except Exception:
-            # Fallback: recreate a BytesIO from the bytes
-            pdf_bytes = pdf_buffer.getvalue()
-            pdf_buffer = io.BytesIO(pdf_bytes)
-            pdf_buffer.seek(0)
-
-        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        # Build filename and headers
+        filename = _build_report_filename(submission)
+        headers = _build_content_disposition_header(filename, submission_id)
 
         return StreamingResponse(
             pdf_buffer,
@@ -631,25 +697,41 @@ async def get_langgraph_status():
     """Check if LangGraph and LangChain services are properly integrated."""
     try:
         # Test LangChain service availability
-        langchain_available = hasattr(langchain_service, 'models') and bool(langchain_service.models)
-        
+        langchain_available = hasattr(langchain_service, "models") and bool(
+            langchain_service.models
+        )
+
         # Test workflow availability
         from app.services.langgraph_workflow import langgraph_workflow
-        workflow_available = hasattr(langgraph_workflow, 'workflow') and langgraph_workflow.workflow is not None
-        
+
+        workflow_available = (
+            hasattr(langgraph_workflow, "workflow")
+            and langgraph_workflow.workflow is not None
+        )
+
         return {
             "langgraph_integrated": True,
             "langchain_service": langchain_available,
             "workflow_available": workflow_available,
-            "status": "operational" if (langchain_available and workflow_available) else "partial",
-            "message": "LangGraph and LangChain successfully integrated"
+            "status": (
+                "operational"
+                if (langchain_available and workflow_available)
+                else "partial"
+            ),
+            "message": "LangGraph and LangChain successfully integrated",
         }
     except Exception as e:
-        logger.error(f"LangGraph status check failed: {e}")
+        logger.error(
+            e,
+            additional_info={
+                "endpoint": "get_langgraph_status",
+                "detail": "LangGraph status check failed",
+            },
+        )
         return {
             "langgraph_integrated": False,
             "status": "error",
-            "message": f"Integration error: {str(e)}"
+            "message": "Integration error occurred while checking LangGraph status",
         }
 
 
@@ -663,8 +745,18 @@ def _convert_to_timezone(dt: datetime, tz_string: str) -> datetime:
     Returns:
         Converted datetime object or original if conversion fails
     """
-    if not dt:
+    # Explicitly handle the common "no value" case
+    if dt is None:
         return dt
+
+    # Validate the input type to avoid silent failures later
+    if not isinstance(dt, datetime):
+        logger.warning(
+            "_convert_to_timezone expected datetime or None, got %s",
+            type(dt),
+            additional_info={"value": str(dt)},
+        )
+        raise TypeError("dt must be a datetime.datetime or None")
 
     # Ensure datetime is timezone-aware (assume UTC if naive)
     if dt.tzinfo is None:

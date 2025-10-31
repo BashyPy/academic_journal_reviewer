@@ -9,18 +9,13 @@ WORKDIR /app
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app
-
 # Copy application code
 COPY app/ ./app/
 COPY .env.example .env
-
-# Change ownership to app user
-RUN chown -R app:app /app
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
 USER app
 
 EXPOSE 8000

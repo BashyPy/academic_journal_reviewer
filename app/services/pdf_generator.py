@@ -1,7 +1,11 @@
+import logging
 import re
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+# Constant for repeated report title
+DEFAULT_REPORT_TITLE = "Academic Review Report"
 
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
@@ -11,11 +15,15 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 
 class PDFReportGenerator:
-    def __init__(self):
+    """Generate simple academic PDF review reports using ReportLab with defensive error handling."""
+
+    def __init__(self) -> None:
+        # Logger for error reporting and debugging
+        self.logger = logging.getLogger(__name__)
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
 
-    def _setup_custom_styles(self):
+    def _setup_custom_styles(self) -> None:
         # Custom styles for academic reports
         self.styles.add(
             ParagraphStyle(
@@ -58,6 +66,7 @@ class PDFReportGenerator:
             )
         )
 
+        # Complete style definition with proper closing parentheses
         self.styles.add(
             ParagraphStyle(
                 name="AcademicIssueText",
@@ -69,9 +78,36 @@ class PDFReportGenerator:
             )
         )
 
+    def _safe_paragraph(self, text: str, style: ParagraphStyle) -> Paragraph:
+        """
+        Create a Paragraph while guarding against ReportLab exceptions;
+        fall back to a safe plain-text paragraph if necessary.
+        """
+        try:
+            return Paragraph(text, style)
+        except Exception:
+            self.logger.exception(
+                "Failed to create Paragraph with style %s, falling back to Normal",
+                getattr(style, "name", "unknown"),
+            )
+            return Paragraph(self._escape_text(text), self.styles["Normal"])
+
+    def _escape_text(self, text: str) -> str:
+        # Minimal escaping to avoid ReportLab markup errors
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     def generate_pdf_report(
         self, review_content: str, submission_info: Dict[str, Any]
     ) -> BytesIO:
+        """
+        Generate a PDF report from review_content and submission_info with validation and robust error handling.
+        """
+        # Validate inputs early to fail fast with clear errors
+        if not isinstance(review_content, str):
+            raise TypeError("review_content must be a string")
+        if not isinstance(submission_info, dict):
+            raise TypeError("submission_info must be a dict")
+
         buffer = BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -81,14 +117,33 @@ class PDFReportGenerator:
             topMargin=1 * inch,
             bottomMargin=1 * inch,
         )
+        # Initialize the story flowable list before use
+        story: List[Any] = []
+        # Header with robust error handling
+        try:
+            story.extend(self._create_header(submission_info))
+        except Exception:
+            self.logger.exception(
+                "Failed to create PDF header; continuing with minimal header"
+            )
+            # Add a minimal header so PDF still generates
+            story.append(
+                self._safe_paragraph(
+                    DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
+                )
+            )
+            story.append(Spacer(1, 10))
+            # Add a minimal header so PDF still generates
+            story.append(
+                self._safe_paragraph(
+                    DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
+                )
+            )
+            story.append(Spacer(1, 10))
 
-        story = []
-
-        # Header with disclaimer
-        story.extend(self._create_header(submission_info))
         story.append(Spacer(1, 10))
 
-        # Add prominent disclaimer at top
+        # Add prominent disclaimer at top — keep style attributes to those supported by ReportLab
         disclaimer_style = ParagraphStyle(
             name="DisclaimerStyle",
             parent=self.styles["Normal"],
@@ -96,8 +151,6 @@ class PDFReportGenerator:
             spaceAfter=15,
             leftIndent=0.5 * inch,
             rightIndent=0.5 * inch,
-            borderWidth=1,
-            borderPadding=10,
         )
 
         disclaimer_text = (
@@ -106,45 +159,93 @@ class PDFReportGenerator:
             "Do not use for final publication decisions without qualified human reviewer approval."
         )
 
-        story.append(Paragraph(disclaimer_text, disclaimer_style))
+        story.append(self._safe_paragraph(disclaimer_text, disclaimer_style))
         story.append(Spacer(1, 20))
 
-        # Parse and format content
-        story.extend(self._parse_review_content(review_content))
+        # Parse and format content with defensive checks
+        try:
+            parsed = self._parse_review_content(review_content)
+            if not isinstance(parsed, list):
+                raise RuntimeError("Parsed review content must be a list of flowables")
+            story.extend(parsed)
+        except Exception:
+            self.logger.exception(
+                "Failed to parse review content; inserting error notice into PDF"
+            )
+            story.append(
+                self._safe_paragraph(
+                    "Unable to parse review content. See server logs for details.",
+                    self.styles["AcademicBodyText"],
+                )
+            )
 
         # Footer
         story.append(Spacer(1, 30))
-        story.extend(self._create_footer())
+        try:
+            footer = self._create_footer()
+            if not isinstance(footer, list):
+                raise RuntimeError("Footer must be a list of flowables")
+            story.extend(footer)
+        except Exception:
+            self.logger.exception("Failed to create footer; adding minimal footer")
+            story.append(
+                self._safe_paragraph(
+                    "Generated by Academic Review Generator.", self.styles["Normal"]
+                )
+            )
 
-        doc.build(story)
-        buffer.seek(0)
-        return buffer
-
-    def _create_header(self, submission_info: Dict[str, Any]) -> list:
-        elements = []
+        # Build document with error handling and clear exception propagation
+        try:
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+        except Exception as e:
+            self.logger.exception("Failed to build PDF document", exc_info=e)
+            raise RuntimeError("PDF generation failed") from e
 
         # Title
-        title = submission_info.get("title", "Academic Review Report")
+        title = submission_info.get("title", DEFAULT_REPORT_TITLE)
         elements.append(
-            Paragraph("Academic Review Report", self.styles["AcademicReportTitle"])
+            self._safe_paragraph(
+                DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
+            )
+        )
+        elements.append(Spacer(1, 10))
+        title = submission_info.get("title", DEFAULT_REPORT_TITLE)
+        elements.append(
+            self._safe_paragraph(
+                DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
+            )
         )
         elements.append(Spacer(1, 10))
 
         # Manuscript info
-        elements.append(
-            Paragraph(f"<b>Manuscript:</b> {title}", self.styles["AcademicBodyText"])
-        )
+        try:
+            elements.append(
+                self._safe_paragraph(
+                    f"<b>Manuscript:</b> {self._escape_text(str(title))}",
+                    self.styles["AcademicBodyText"],
+                )
+            )
+        except Exception:
+            self.logger.exception("Failed to add manuscript info to header")
 
         if "authors" in submission_info:
-            authors = submission_info["authors"]
-            elements.append(
-                Paragraph(f"<b>Authors:</b> {authors}", self.styles["AcademicBodyText"])
-            )
+            try:
+                authors = submission_info["authors"]
+                elements.append(
+                    self._safe_paragraph(
+                        f"<b>Authors:</b> {self._escape_text(str(authors))}",
+                        self.styles["AcademicBodyText"],
+                    )
+                )
+            except Exception:
+                self.logger.exception("Failed to add authors to header")
 
         # Date
         date_str = datetime.now().strftime("%B %d, %Y")
         elements.append(
-            Paragraph(
+            self._safe_paragraph(
                 f"<b>Review Date:</b> {date_str}", self.styles["AcademicBodyText"]
             )
         )
@@ -152,9 +253,9 @@ class PDFReportGenerator:
         return elements
 
     def _parse_review_content(self, content: str) -> list:
-        elements = []
+        elements: List[Any] = []
         lines = content.split("\n")
-        current_section = []
+        current_section: List[str] = []
 
         for line in lines:
             line = line.strip()
@@ -169,7 +270,9 @@ class PDFReportGenerator:
 
             # Regular paragraphs (fallback)
             clean_line = self._clean_markdown(line)
-            elements.append(Paragraph(clean_line, self.styles["AcademicBodyText"]))
+            elements.append(
+                self._safe_paragraph(clean_line, self.styles["AcademicBodyText"])
+            )
 
         # Process any remaining section
         if current_section:
@@ -187,56 +290,78 @@ class PDFReportGenerator:
                 elements.extend(self._process_section(current_section))
                 current_section = []
             header = line[3:].strip()
-            elements.append(Paragraph(header, self.styles["AcademicSectionHeader"]))
+            elements.append(
+                self._safe_paragraph(header, self.styles["AcademicSectionHeader"])
+            )
             return True, current_section
 
         if line.startswith("### "):
             header = line[4:].strip()
-            elements.append(Paragraph(header, self.styles["AcademicSubHeader"]))
+            elements.append(
+                self._safe_paragraph(header, self.styles["AcademicSubHeader"])
+            )
             return True, current_section
 
         # Handle Line-by-Line Recommendations with better formatting
         if line.startswith("Line ") and ":" in line:
             clean_line = self._clean_markdown(line)
-            elements.append(Paragraph(clean_line, self.styles["AcademicIssueText"]))
+            elements.append(
+                self._safe_paragraph(clean_line, self.styles["AcademicIssueText"])
+            )
             return True, current_section
 
         if line.startswith("- "):
             bullet_text = line[2:].strip()
             clean_bullet = self._clean_markdown(bullet_text)
             elements.append(
-                Paragraph(f"• {clean_bullet}", self.styles["AcademicIssueText"])
+                self._safe_paragraph(
+                    f"• {clean_bullet}", self.styles["AcademicIssueText"]
+                )
             )
             return True, current_section
 
         if re.match(r"^\d+\.", line):
             clean_line = self._clean_markdown(line)
-            elements.append(Paragraph(clean_line, self.styles["AcademicIssueText"]))
+            elements.append(
+                self._safe_paragraph(clean_line, self.styles["AcademicIssueText"])
+            )
             return True, current_section
 
         return False, current_section
 
     def _process_section(self, section_lines: list) -> list:
-        elements = []
+        elements: List[Any] = []
         for line in section_lines:
             if line.strip():
                 clean_line = self._clean_markdown(line)
-                elements.append(Paragraph(clean_line, self.styles["AcademicBodyText"]))
+                elements.append(
+                    self._safe_paragraph(clean_line, self.styles["AcademicBodyText"])
+                )
         return elements
 
     def _clean_markdown(self, text: str) -> str:
-        # Convert markdown formatting to HTML for ReportLab
-        text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)  # Bold
-        text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)  # Italic
-        text = re.sub(r"`(.*?)`", r'<font name="Courier">\1</font>', text)  # Code
+        # Convert markdown formatting to simple HTML for ReportLab
+        try:
+            original = text
+            text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)  # Bold
+            text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)  # Italic
+            text = re.sub(r"`(.*?)`", r'<font name="Courier">\1</font>', text)  # Code
+            # Avoid removing brackets used in HTML tags we intentionally produce
+            # Minimal cleanup
 
-        # Clean up any remaining markdown
-        text = text.replace("**", "").replace("*", "")
+            # If no transformation occurred, return a safely escaped version
+            if text == original:
+                return self._escape_text(text)
 
-        return text
+            return text
+        except Exception:
+            self.logger.exception(
+                "Failed to clean markdown text; returning escaped text"
+            )
+            return self._escape_text(text)
 
     def _create_footer(self) -> list:
-        elements = []
+        elements: List[Any] = []
         elements.append(Spacer(1, 20))
 
         footer_text = (
@@ -244,7 +369,7 @@ class PDFReportGenerator:
             "The analysis combines multiple specialized AI agents to provide comprehensive academic evaluation."
         )
 
-        elements.append(Paragraph(footer_text, self.styles["Normal"]))
+        elements.append(self._safe_paragraph(footer_text, self.styles["Normal"]))
         return elements
 
     def generate_review_pdf(

@@ -3,8 +3,7 @@ from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
-from app.api.routes import (
+from docs.routes import (
     _content_matches_extension,
     _convert_to_timezone,
     _read_and_validate_content,
