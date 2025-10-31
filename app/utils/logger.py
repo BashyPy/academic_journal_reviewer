@@ -401,6 +401,34 @@ class AARISLogger:
         )
         self._write_log(LogLevel.INFO, formatted, custom_file=self.review_log)
 
+    def log_api_request(
+        self,
+        endpoint: str,
+        method: str,
+        status_code: int,
+        additional_info: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log API request details"""
+        context = {
+            "endpoint": endpoint,
+            "method": method,
+            "status_code": status_code,
+            "component": "api_system",
+        }
+        if additional_info:
+            try:
+                context.update(additional_info)
+            except Exception as e:
+                context["additional_info_error"] = (
+                    f"Failed to merge additional_info: {e}"
+                )
+
+        message = f"{method} {endpoint} - Status: {status_code}"
+        formatted = self._format_message(
+            LogLevel.INFO, message, additional_info=context
+        )
+        self._write_log(LogLevel.INFO, formatted, custom_file=self.api_log)
+
     def clear_logs(self, level: Optional[LogLevel] = None) -> None:
         try:
             targets = (

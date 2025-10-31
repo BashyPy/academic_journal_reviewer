@@ -23,6 +23,16 @@ services:
       timeout: 10s
       retries: 3
 
+  frontend:
+    build: ./frontend
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+    env_file:
+      - .env
+    depends_on:
+      - app
+    restart: unless-stopped
+
   mongodb:
     image: mongo:6.0
     ports:
@@ -45,6 +55,7 @@ services:
       - ./ssl:/etc/nginx/ssl
     depends_on:
       - app
+      - frontend
     restart: unless-stopped
 
 volumes:

@@ -3,16 +3,47 @@ import textwrap
 import logging
 from typing import Any, Dict, List, Optional
 
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.schema import Document
+try:
+    from langchain.chains import ConversationChain
+except ImportError:
+    from langchain_core.runnables import RunnableLambda
+    # Fallback for newer LangChain versions
+    class ConversationChain:
+        def __init__(self, llm, memory, verbose=False):
+            self.llm = llm
+            self.memory = memory
+            
+        async def apredict(self, input):
+            return await self.llm.ainvoke(input)
+            
+        def predict(self, input):
+            return self.llm.invoke(input)
+try:
+    from langchain.memory import ConversationBufferWindowMemory
+except ImportError:
+    # Fallback for newer LangChain versions
+    class ConversationBufferWindowMemory:
+        def __init__(self, k=10, return_messages=True):
+            self.k = k
+            self.return_messages = return_messages
+            self.messages = []
+            
+        def clear(self):
+            self.messages = []
+try:
+    from langchain.schema import Document
+except ImportError:
+    from langchain_core.documents import Document
 from langchain_anthropic import ChatAnthropic
-from langchain_community.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import MongoDBAtlasVectorSearch
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.vectorstores import VectorStore
-from langchain_google_genai import ChatGoogleGenerativeAI
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    ChatGoogleGenerativeAI = None
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
@@ -118,7 +149,7 @@ class LangChainService:
             logger.exception("Failed to initialize Anthropic")
 
         try:
-            if settings.GEMINI_API_KEY:
+            if settings.GEMINI_API_KEY and ChatGoogleGenerativeAI:
                 models["gemini"] = ChatGoogleGenerativeAI(
                     api_key=settings.GEMINI_API_KEY,
                     model="gemini-pro",
