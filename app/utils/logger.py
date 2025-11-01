@@ -35,51 +35,7 @@ class AARISLogger:
     """
 
     def __init__(self, log_dir: Union[str, Path] = "logs"):
-        # Normalize and sanitize the provided log_dir into a single safe directory name.
-        candidate_name = "logs"
-        try:
-            if isinstance(log_dir, Path):
-                candidate_name = log_dir.name or "logs"
-            elif isinstance(log_dir, str):
-                # Use only the final path segment to avoid traversal and strip disallowed chars.
-                candidate_name = Path(log_dir).name or "logs"
-                candidate_name = "".join(
-                    c for c in candidate_name if c.isalnum() or c in ("-", "_")
-                )
-                if not candidate_name:
-                    candidate_name = "logs"
-            else:
-                # Unexpected type, fall back to default.
-                candidate_name = "logs"
-        except Exception as e:
-            print(f"Failed to sanitize log_dir ({log_dir}): {e}", file=sys.stderr)
-            candidate_name = "logs"
-
-        # Define a safe base directory for all logs to avoid using an undefined variable
-        # and to prevent directory traversal; adjust this if you want a different base.
-        base_logs_dir = Path.cwd() / "logs"
-
-        log_dir_path = base_logs_dir / candidate_name
-
-        # Ensure the resolved candidate is inside the base logs directory, with robust error handling.
-        try:
-            resolved_base = base_logs_dir.resolve()
-            try:
-                resolved_candidate = log_dir_path.resolve()
-                # Use relative_to check; any exception means it's unsafe or resolution failed.
-                try:
-                    resolved_candidate.relative_to(resolved_base)
-                except Exception:
-                    # Not within base directory -> fallback to base.
-                    log_dir_path = base_logs_dir
-            except Exception:
-                # If resolving candidate failed, fallback to base.
-                log_dir_path = base_logs_dir
-        except Exception:
-            # If resolving base fails for any reason, fallback to a minimal safe path.
-            log_dir_path = Path("logs")
-
-        self.log_dir = log_dir_path
+        self.log_dir = Path(log_dir)
         self.log_files = {
             LogLevel.DEBUG: self.log_dir / "debug.log",
             LogLevel.INFO: self.log_dir / "info.log",
@@ -139,7 +95,7 @@ class AARISLogger:
             log_msg.extend(self._render_error_section(error, exc_info))
 
         default_context = {
-            "software_engineer": "Muhammad",
+            "AI Engineer": "Muhammad",
             "system": "AARIS",
             "component": "backend",
         }
@@ -213,52 +169,10 @@ class AARISLogger:
 
         try:
             self._ensure_log_directory()
-
-            # Resolve base directory without strict resolution to avoid exceptions if files do not exist yet.
-            try:
-                base_dir = self.log_dir.resolve(strict=False)
-            except Exception:
-                base_dir = self.log_dir
-
-            # Pick the target file (custom or level-based) and resolve safely.
-            candidate = (
-                Path(custom_file)
-                if custom_file is not None
-                else Path(self.log_files[level])
-            )
-            try:
-                candidate_resolved = candidate.resolve(strict=False)
-                # Ensure the resolved candidate is within the base logs directory.
-                try:
-                    candidate_resolved.relative_to(base_dir)
-                except Exception:
-                    # Fallback to the level-specific file if candidate is outside base directory.
-                    candidate_resolved = Path(self.log_files[level]).resolve(
-                        strict=False
-                    )
-            except Exception:
-                candidate_resolved = Path(self.log_files[level]).resolve(strict=False)
-
-            # Ensure parent directories exist for the resolved target.
-            try:
-                candidate_resolved.parent.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                # If we can't create the parent, fallback to base level file parent.
-                try:
-                    fallback_parent = Path(self.log_files[level]).parent
-                    fallback_parent.mkdir(parents=True, exist_ok=True)
-                    candidate_resolved = Path(self.log_files[level]).resolve(
-                        strict=False
-                    )
-                except Exception:
-                    # Give up gracefully
-                    print(
-                        f"Failed to prepare log file: {candidate_resolved}",
-                        file=sys.stderr,
-                    )
-                    return
-
-            with open(candidate_resolved, "a", encoding="utf-8") as f:
+            
+            target_file = custom_file if custom_file else self.log_files[level]
+            
+            with open(target_file, "a", encoding="utf-8") as f:
                 f.write(message)
             self._log_cache.add(log_hash)
         except (IOError, PermissionError) as e:
@@ -438,47 +352,12 @@ class AARISLogger:
                 + [self.agent_log, self.review_log, self.api_log]
             )
 
-            # Resolve base log dir without strict resolution to avoid exceptions if files do not exist yet.
-            try:
-                base_log_dir = self.log_dir.resolve(strict=False)
-            except Exception:
-                base_log_dir = self.log_dir
-
-            for file in targets:
+            for file_path in targets:
                 try:
-                    file_path = Path(file).resolve(strict=False)
-                except Exception:
-                    print(
-                        f"Security: Could not resolve path for: {file}", file=sys.stderr
-                    )
-                    continue
-
-                # Security check: ensure file is within log directory
-                try:
-                    file_path.relative_to(base_log_dir)
-                except Exception:
-                    print(
-                        f"Security: Skipped clearing log file outside log directory: {file_path}",
-                        file=sys.stderr,
-                    )
-                    continue
-
-                # Additional security: check file extension
-                if file_path.suffix not in (".log", ".txt"):
-                    print(
-                        f"Security: Skipped clearing non-log file: {file_path}",
-                        file=sys.stderr,
-                    )
-                    continue
-
-                try:
-                    # Ensure parent exists and then truncate file
-                    file_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write("")
                 except Exception as e:
                     print(f"Failed to clear log {file_path}: {e}", file=sys.stderr)
-                    continue
 
             self._log_cache.clear()
         except Exception as e:
