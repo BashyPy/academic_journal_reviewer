@@ -2,6 +2,7 @@ __pycache__/
 .venv
 .env
 .env.production
+.env.prod
 reviews
 .history
 .ipynb_checkpoints
@@ -31,3 +32,6 @@ Reviews/
 ssl/
 verify_cleanup.py
 requirements-test.txt
+ECS_EXECUTION_ROLE.txt
+trust-policy.json
+scripts

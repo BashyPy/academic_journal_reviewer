@@ -12,7 +12,7 @@ class UploadResponse(BaseModel):
     message: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class TaskResponse(BaseModel):
@@ -22,7 +22,7 @@ class TaskResponse(BaseModel):
     status: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class StatusResponse(BaseModel):
@@ -33,7 +33,7 @@ class StatusResponse(BaseModel):
     tasks: List[TaskResponse]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class SubmissionResponse(BaseModel):
@@ -48,7 +48,7 @@ class SubmissionResponse(BaseModel):
     created_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ReportResponse(BaseModel):
@@ -62,4 +62,4 @@ class ReportResponse(BaseModel):
     status: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True

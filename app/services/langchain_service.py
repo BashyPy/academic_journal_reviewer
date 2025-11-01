@@ -36,7 +36,10 @@ except ImportError:
     from langchain_core.documents import Document
 from langchain_anthropic import ChatAnthropic
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import MongoDBAtlasVectorSearch
+try:
+    from langchain_mongodb import MongoDBAtlasVectorSearch
+except ImportError:
+    from langchain_community.vectorstores import MongoDBAtlasVectorSearch
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.vectorstores import VectorStore

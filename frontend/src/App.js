@@ -11,8 +11,8 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>AARIS - Academic Journal Reviewer</h1>
-        <p>Agentic AI System for Academic Paper Review</p>
+        <h1>AARIS</h1>
+        <p>Academic Agentic Review Intelligence System</p>
       </header>
       
       <main className="App-main">
@@ -21,7 +21,7 @@ function App() {
             className={currentView === 'upload' ? 'active' : ''}
             onClick={() => setCurrentView('upload')}
           >
-            Upload Manuscript
+            📄 Upload Manuscript
           </button>
           {submissionId && (
             <>
@@ -29,13 +29,13 @@ function App() {
                 className={currentView === 'status' ? 'active' : ''}
                 onClick={() => setCurrentView('status')}
               >
-                Review Status
+                📊 Review Status
               </button>
               <button 
                 className={currentView === 'report' ? 'active' : ''}
                 onClick={() => setCurrentView('report')}
               >
-                Final Report
+                📋 Final Report
               </button>
             </>
           )}

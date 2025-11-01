@@ -17,8 +17,9 @@ langchain-openai
 langchain-anthropic
 # langchain-google-genai  # Temporarily disabled due to pydantic_v1 compatibility issues
 langchain-groq
-langchain-community
+langchain-community<0.3.0
 langchain-core
+langchain-mongodb
 langgraph
 langsmith
 

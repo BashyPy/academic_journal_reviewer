@@ -4,7 +4,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_URL=mongodb://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@mongodb:27017
       - MONGODB_DATABASE=${MONGODB_DATABASE}
       - DEFAULT_LLM=${DEFAULT_LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -26,7 +26,7 @@ services:
   frontend:
     build: ./frontend
     environment:
-      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+      - REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
     env_file:
       - .env
     depends_on:
@@ -40,10 +40,10 @@ services:
     volumes:
       - mongodb_prod_data:/data/db
     restart: unless-stopped
-    command: mongod --auth
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE}
 
   nginx:
     image: nginx:alpine
