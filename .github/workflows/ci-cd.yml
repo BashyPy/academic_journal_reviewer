@@ -17,6 +17,9 @@ env:
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   APP_ID: aaris-test
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
