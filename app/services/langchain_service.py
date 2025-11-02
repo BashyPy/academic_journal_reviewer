@@ -411,11 +411,18 @@ class LangChainService:
                 logger.info("Limited to first 20 document chunks for embedding")
 
             # Store embeddings with timeout
-            doc_ids = await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 self.vector_store.aadd_documents(documents),
                 timeout=30.0
             )
-            return doc_ids
+            # Handle different return types from vector store
+            if hasattr(result, 'inserted_ids'):
+                return result.inserted_ids
+            elif isinstance(result, list):
+                return result
+            else:
+                # Return document count as fallback
+                return [str(i) for i in range(len(documents))]
         except asyncio.TimeoutError:
             logger.error(
                 Exception("Embedding creation timed out"),
@@ -500,21 +507,35 @@ class LangChainService:
     
     async def _perform_search(self, query: str, k: int) -> List[Document]:
         """Helper method to perform the actual search with fallbacks."""
-        # Try async methods first
-        if hasattr(self.vector_store, "asimilarity_search"):
-            return await self.vector_store.asimilarity_search(query, k=k)
-        
-        # Fallback to sync method in thread pool
-        if hasattr(self.vector_store, "similarity_search"):
-            import concurrent.futures
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                return await loop.run_in_executor(
-                    executor, 
-                    lambda: self.vector_store.similarity_search(query, k=k)
-                )
-        
-        return []
+        try:
+            # Try async methods first
+            if hasattr(self.vector_store, "asimilarity_search"):
+                result = await self.vector_store.asimilarity_search(query, k=k)
+                # Handle cursor objects from MongoDB
+                if hasattr(result, 'to_list'):
+                    return await result.to_list(length=k)
+                elif hasattr(result, '__aiter__'):
+                    return [doc async for doc in result]
+                return list(result) if result else []
+            
+            # Fallback to sync method in thread pool
+            if hasattr(self.vector_store, "similarity_search"):
+                import concurrent.futures
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    result = await loop.run_in_executor(
+                        executor, 
+                        lambda: self.vector_store.similarity_search(query, k=k)
+                    )
+                    return list(result) if result else []
+            
+            return []
+        except Exception as e:
+            logger.error(
+                Exception(f"_perform_search failed: {str(e)}"),
+                {"component": "langchain_service", "function": "_perform_search"},
+            )
+            return []
 
     async def _invoke_model(
         self, model: Any, provider: str, enhanced_prompt: str, _use_memory: bool

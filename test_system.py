@@ -64,7 +64,7 @@ async def main():
     print("\n3. LLM Models:")
     llm_ok = test_llm_models()
 
-    print(f"\n=== Results ===")
+    print("\n=== Results ===")
     print(f"MongoDB: {'OK' if mongodb_ok else 'FAIL'}")
     print(f"LLM Models: {'OK' if llm_ok else 'FAIL'}")
 
