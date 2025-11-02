@@ -6,9 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.admin_routes import router as admin_router
+from app.api.admin_user_routes import router as admin_user_router
+from app.api.auth_routes import router as auth_router
 from app.api.cache_routes import router as cache_router
+from app.api.roles_routes import router as roles_router
 from app.api.routes import router
 from app.middleware.rate_limiter import rate_limit_middleware
+from app.middleware.waf import waf_middleware
+from app.services.security_monitor import security_monitor
 from app.utils.logger import get_logger
 
 # Initialize logger
@@ -26,7 +32,8 @@ app = FastAPI(
 rate_limit_storage = defaultdict(list)
 
 
-# Apply rate limiting middleware first
+# Apply security middleware in order: WAF -> Rate Limiting
+app.middleware("http")(waf_middleware)
 app.middleware("http")(rate_limit_middleware)
 
 
@@ -35,6 +42,14 @@ app.middleware("http")(rate_limit_middleware)
 async def security_middleware(request: Request, call_next):
     start_time = time.time()
     client_ip = request.client.host if request.client else "unknown"
+
+    # Check if IP is blocked
+    if security_monitor.is_blocked(client_ip):
+        logger.warning(f"Blocked IP attempted access: {client_ip}")
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Access denied"},
+        )
 
     # Rate limiting
     now = datetime.now()
@@ -152,6 +167,10 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(cache_router)
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(roles_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
+app.include_router(admin_user_router, prefix="/api/v1")
 
 
 @app.get("/")

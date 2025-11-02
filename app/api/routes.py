@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.agents.orchestrator import orchestrator
+from app.middleware.auth import get_api_key
 from app.models.responses import ReportResponse, SubmissionResponse, UploadResponse
 from app.models.schemas import TaskStatus
+from app.services.audit_logger import audit_logger
 from app.services.disclaimer_service import disclaimer_service
 from app.services.document_cache_service import document_cache_service
 from app.services.document_parser import document_parser
@@ -222,6 +224,11 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
 
     submission_id = await mongodb_service.save_submission(submission_data)
 
+    # Audit log submission
+    await audit_logger.log_submission(
+        submission_id, user.get("name", "unknown"), client_ip
+    )
+
     # Cache the submission for future identical uploads
     await document_cache_service.cache_submission(
         document_content,
@@ -282,6 +289,7 @@ async def upload_manuscript(
         default="UTC",
         description="Client timezone (e.g., 'America/New_York', 'Europe/London')",
     ),
+    user: dict = Depends(get_api_key),
 ):
     """Thin wrapper that delegates heavy work to an internal helper to reduce coupling and improve testability."""
     client_ip = request.client.host if request.client else "unknown"

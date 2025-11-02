@@ -9,10 +9,24 @@ from app.utils.logger import get_logger
 
 class MongoDBService:
     def __init__(self):
-        self.client = AsyncIOMotorClient(settings.MONGODB_URL)
+        # Enable TLS/SSL for MongoDB connection
+        connection_params = (
+            {
+                "tls": True,
+                "tlsAllowInvalidCertificates": False,
+            }
+            if settings.MONGODB_URL.startswith("mongodb+srv://")
+            else {}
+        )
+
+        self.client = AsyncIOMotorClient(settings.MONGODB_URL, **connection_params)
         self.db = self.client[settings.MONGODB_DATABASE]
         self.submissions = self.db.submissions
         self.logger = get_logger()
+
+    async def get_database(self):
+        """Get database instance"""
+        return self.db
 
     async def save_submission(self, submission_data: Dict[str, Any]) -> str:
         try:
