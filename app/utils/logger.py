@@ -169,9 +169,9 @@ class AARISLogger:
 
         try:
             self._ensure_log_directory()
-            
+
             target_file = custom_file if custom_file else self.log_files[level]
-            
+
             with open(target_file, "a", encoding="utf-8") as f:
                 f.write(message)
             self._log_cache.add(log_hash)

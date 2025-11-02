@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 from app.middleware.guardrail_middleware import apply_review_guardrails
 from app.services.domain_detector import domain_detector
 from app.services.issue_deduplicator import issue_deduplicator
-from app.services.llm_service import llm_service
 from app.services.pdf_generator import pdf_generator
 
 
@@ -12,21 +11,77 @@ class SynthesisAgent:
         self.llm_provider = llm_provider
 
     async def generate_final_report(self, context: Dict[str, Any]) -> str:
-        # Use enhanced multi-pass analysis for detailed reviews
-        from app.services.enhanced_llm_service import enhanced_llm_service
-
         try:
-            # Try enhanced synthesis first
-            response = await enhanced_llm_service.enhanced_synthesis(context)
+            from app.services.langchain_service import langchain_service
+            from app.services.llm_service import llm_service
+
+            submission = context["submission"]
+            critiques = context["critiques"]
+
+            # Advanced synthesis using multi-step LangChain workflow
+            # Step 1: Initial synthesis with RAG
+            initial_synthesis_prompt = f"""
+Perform initial synthesis of academic manuscript review:
+
+Title: {submission.get('title', 'Unknown')}
+Full Content: {submission.get('content', '')}
+
+Agent Reviews:
+{self._format_critiques_for_synthesis(critiques)}
+
+Create comprehensive analysis focusing on:
+1. Overall manuscript quality assessment
+2. Critical issues identification with evidence
+3. Strengths and weaknesses analysis
+4. Domain-specific evaluation criteria
+"""
+
+            initial_response = await langchain_service.invoke_with_rag(
+                initial_synthesis_prompt, context=submission, use_memory=False
+            )
+
+            # Step 2: Enhanced synthesis with chain-of-thought
+            enhanced_synthesis_prompt = f"""
+Based on the initial analysis, create a detailed professional review report:
+
+Initial Analysis:
+{initial_response}
+
+Original Manuscript:
+Title: {submission.get('title', 'Unknown')}
+Content: {submission.get('content', '')}
+
+Agent Reviews:
+{self._format_critiques_for_synthesis(critiques)}
+
+Generate a structured academic review with:
+1. Executive summary with scores and decision
+2. Critical issues with exact quotes and solutions
+3. Important improvements with detailed recommendations
+4. Minor suggestions with section references
+5. Manuscript strengths with specific examples
+6. Section-specific action items
+7. Domain-appropriate scoring breakdown
+
+Ensure professional academic tone and comprehensive coverage.
+"""
+
+            # Use chain-of-thought for final synthesis
+            final_response = await langchain_service.chain_of_thought_analysis(
+                enhanced_synthesis_prompt, submission
+            )
+
+            # Apply guardrails to final review
+            sanitized_response = apply_review_guardrails(final_response)
+            return sanitized_response
+
         except Exception:
-            # Fallback to standard synthesis
+            # Fallback to basic synthesis if LangChain fails
+            from app.services.llm_service import llm_service
+
             prompt = self.build_synthesis_prompt(context)
             response = await llm_service.generate_content(prompt, self.llm_provider)
-
-        # Apply guardrails to final review
-        sanitized_response = apply_review_guardrails(response)
-
-        return sanitized_response
+            return apply_review_guardrails(response)
 
     async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
         """Generate PDF version of the review report"""
@@ -266,3 +321,15 @@ STRICT FORMATTING RULES:
             criteria_text = ", ".join(criteria)
             lines.append(f"- {aspect.title()}: {criteria_text}")
         return "\n".join(lines)
+
+    def _format_critiques_for_synthesis(self, critiques: List[Dict[str, Any]]) -> str:
+        """Format critiques for LangChain synthesis"""
+        formatted = []
+        for critique in critiques:
+            agent_type = critique.get("agent_type", "unknown")
+            content = critique.get("content", "No content")
+            score = critique.get("score", 0)
+            formatted.append(
+                f"{agent_type.title()} Agent (Score: {score}/10):\n{content}\n"
+            )
+        return "\n".join(formatted)

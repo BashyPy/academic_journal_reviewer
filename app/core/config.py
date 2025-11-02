@@ -1,14 +1,15 @@
-import logging
 import os
 import re
 from typing import Optional
 
 from dotenv import load_dotenv
 
+from app.utils.logger import get_logger
+
 load_dotenv()
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Settings:

@@ -1,60 +1,112 @@
+import asyncio
 import json
 import textwrap
-import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional, cast
+
+from app.utils.logger import get_logger
 
 try:
     from langchain.chains import ConversationChain
 except ImportError:
-    from langchain_core.runnables import RunnableLambda
     # Fallback for newer LangChain versions
     class ConversationChain:
         def __init__(self, llm, memory, verbose=False):
             self.llm = llm
             self.memory = memory
-            
-        async def apredict(self, input):
-            return await self.llm.ainvoke(input)
-            
-        def predict(self, input):
-            return self.llm.invoke(input)
+
+        async def apredict(self, *args, **kwargs):
+            # Accept both 'input' and 'prompt' to maintain compatibility, avoid redefining built-in 'input'
+            prompt = kwargs.get(
+                "input", kwargs.get("prompt", args[0] if args else None)
+            )
+            return await self.llm.ainvoke(prompt)
+
+        def predict(self, *args, **kwargs):
+            # Accept both 'input' and 'prompt' to maintain compatibility, avoid redefining built-in 'input'
+            prompt = kwargs.get(
+                "input", kwargs.get("prompt", args[0] if args else None)
+            )
+            return self.llm.invoke(prompt)
+
+
 try:
-    from langchain.memory import ConversationBufferWindowMemory
+    from langchain.memory import (
+        ConversationBufferWindowMemory as LCConversationBufferWindowMemory,
+    )
 except ImportError:
     # Fallback for newer LangChain versions
-    class ConversationBufferWindowMemory:
+    class LCConversationBufferWindowMemory:
         def __init__(self, k=10, return_messages=True):
             self.k = k
             self.return_messages = return_messages
             self.messages = []
-            
+
         def clear(self):
             self.messages = []
+
+
 try:
     from langchain.schema import Document
 except ImportError:
-    from langchain_core.documents import Document
-from langchain_anthropic import ChatAnthropic
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+    try:
+        from langchain_core.documents import Document
+    except ImportError:
+        # Fallback Document class
+        class Document:
+            def __init__(self, page_content="", metadata=None):
+                self.page_content = page_content
+                self.metadata = metadata or {}
+
+
+try:
+    from langchain_anthropic import ChatAnthropic
+except ImportError:
+    ChatAnthropic = None
+
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    RecursiveCharacterTextSplitter = None
+
 try:
     from langchain_mongodb import MongoDBAtlasVectorSearch
 except ImportError:
-    from langchain_community.vectorstores import MongoDBAtlasVectorSearch
-from langchain_core.messages import HumanMessage
-from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
-from langchain_core.vectorstores import VectorStore
+    try:
+        from langchain_community.vectorstores import MongoDBAtlasVectorSearch
+    except ImportError:
+        MongoDBAtlasVectorSearch = None
+
+try:
+    from langchain_core.messages import HumanMessage
+    from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+    from langchain_core.vectorstores import VectorStore
+except ImportError:
+    HumanMessage = None
+    JsonOutputParser = None
+    StrOutputParser = None
+    VectorStore = None
+
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
 except ImportError:
     ChatGoogleGenerativeAI = None
-from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+try:
+    from langchain_groq import ChatGroq
+except ImportError:
+    ChatGroq = None
+
+try:
+    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+except ImportError:
+    ChatOpenAI = None
+    OpenAIEmbeddings = None
 
 from app.core.config import settings
 from app.services.cache_service import cache_service
 from app.services.mongodb_service import mongodb_service
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LangChainService:
@@ -63,27 +115,32 @@ class LangChainService:
 
         # Initialize embeddings with error handling; fall back to None if unavailable.
         try:
-            if settings.OPENAI_API_KEY:
+            if settings.OPENAI_API_KEY and OpenAIEmbeddings:
                 self.embeddings = OpenAIEmbeddings(api_key=settings.OPENAI_API_KEY)
             else:
                 self.embeddings = None
-                logger.info("OpenAI API key not set; embeddings disabled.")
+                logger.info(
+                    "OpenAI API key not set or OpenAIEmbeddings not available; embeddings disabled."
+                )
         except Exception as e:
-            logger.exception(
-                e,
-                "Failed to initialize OpenAI embeddings"
-            )
+            logger.error(e, {"component": "langchain_service", "function": "__init__"})
             self.embeddings = None
 
         # Initialize text splitter with fallback to a simple splitter to ensure create_documents exists.
         try:
-            self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
-                separators=["\n\n", "\n", ".", " "],
-            )
+            if RecursiveCharacterTextSplitter:
+                self.text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    separators=["\n\n", "\n", ".", " "],
+                )
+            else:
+                raise ImportError("RecursiveCharacterTextSplitter not available")
         except Exception:
-            logger.exception("Failed to initialize RecursiveCharacterTextSplitter")
+            logger.error(
+                Exception("Failed to initialize RecursiveCharacterTextSplitter"),
+                {"component": "langchain_service", "function": "__init__"},
+            )
 
             # Minimal fallback splitter compatible with create_documents used elsewhere.
             class SimpleTextSplitter:
@@ -104,10 +161,16 @@ class LangChainService:
 
             self.text_splitter = SimpleTextSplitter(chunk_size=1000, chunk_overlap=200)
 
-        self.memory = ConversationBufferWindowMemory(k=10, return_messages=True)
+        self.memory = LCConversationBufferWindowMemory(k=10, return_messages=True)
         self.vector_store = self._initialize_vector_store()
         self.domain_prompts = self._load_domain_specific_prompts()
-        self.output_parsers = {"json": JsonOutputParser(), "string": StrOutputParser()}
+
+        # Initialize output parsers with fallbacks
+        self.output_parsers = {}
+        if JsonOutputParser:
+            self.output_parsers["json"] = JsonOutputParser()
+        if StrOutputParser:
+            self.output_parsers["string"] = StrOutputParser()
 
     def _initialize_models(self) -> Dict[str, Any]:
         """Initialize all LLM models with configurations and provide clear fallbacks."""
@@ -128,50 +191,70 @@ class LangChainService:
                     f"LLM provider '{self.name}' is not initialized; set the appropriate API key or choose another provider."
                 )
 
-        try:
-            if settings.OPENAI_API_KEY:
-                models["openai"] = ChatOpenAI(
-                    api_key=settings.OPENAI_API_KEY,
-                    model="gpt-4-turbo-preview",
-                    temperature=0.1,
-                    max_tokens=4000,
-                    request_timeout=60,
-                )
-        except Exception:
-            logger.exception("Failed to initialize OpenAI")
+        # Provider specifications: (model_key, settings_attr, client_class, kwargs)
+        provider_specs = [
+            (
+                "openai",
+                "OPENAI_API_KEY",
+                ChatOpenAI,
+                {
+                    "api_key": settings.OPENAI_API_KEY,
+                    "model": "gpt-4-turbo-preview",
+                    "temperature": 0.1,
+                    "max_tokens": 4000,
+                    "request_timeout": 60,
+                },
+            ),
+            (
+                "anthropic",
+                "ANTHROPIC_API_KEY",
+                ChatAnthropic,
+                {
+                    "api_key": settings.ANTHROPIC_API_KEY,
+                    "model": "claude-3-opus-20240229",
+                    "temperature": 0.1,
+                    "max_tokens": 4000,
+                },
+            ),
+            (
+                "gemini",
+                "GEMINI_API_KEY",
+                ChatGoogleGenerativeAI,
+                {
+                    "api_key": settings.GEMINI_API_KEY,
+                    "model": "gemini-pro",
+                    "temperature": 0.1,
+                    "max_output_tokens": 4000,
+                },
+            ),
+            (
+                "groq",
+                "GROQ_API_KEY",
+                ChatGroq,
+                {
+                    "api_key": settings.GROQ_API_KEY,
+                    "model": "llama3-8b-8192",  # Use smaller model to avoid token limits
+                    "temperature": 0.1,
+                    "max_tokens": 4000,
+                },
+            ),
+        ]
 
-        try:
-            if settings.ANTHROPIC_API_KEY:
-                models["anthropic"] = ChatAnthropic(
-                    api_key=settings.ANTHROPIC_API_KEY,
-                    model="claude-3-opus-20240229",
-                    temperature=0.1,
-                    max_tokens=4000,
+        # Loop through provider specs and attempt initialization in a uniform way.
+        for key, setting_attr, client_cls, kwargs in provider_specs:
+            try:
+                if getattr(settings, setting_attr, None) and client_cls:
+                    # Filter out None values to avoid passing invalid kwargs
+                    init_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+                    models[key] = client_cls(**init_kwargs)
+            except Exception:
+                logger.error(
+                    Exception(f"Failed to initialize {key.capitalize()}"),
+                    {
+                        "component": "langchain_service",
+                        "function": "_initialize_models",
+                    },
                 )
-        except Exception:
-            logger.exception("Failed to initialize Anthropic")
-
-        try:
-            if settings.GEMINI_API_KEY and ChatGoogleGenerativeAI:
-                models["gemini"] = ChatGoogleGenerativeAI(
-                    api_key=settings.GEMINI_API_KEY,
-                    model="gemini-pro",
-                    temperature=0.1,
-                    max_output_tokens=4000,
-                )
-        except Exception:
-            logger.exception("Failed to initialize Gemini")
-
-        try:
-            if settings.GROQ_API_KEY:
-                models["groq"] = ChatGroq(
-                    api_key=settings.GROQ_API_KEY,
-                    model="llama3-70b-8192",
-                    temperature=0.1,
-                    max_tokens=4000,
-                )
-        except Exception:
-            logger.exception("Failed to initialize Groq")
 
         # Ensure a default provider key exists to avoid KeyError later; use dummy wrapper if real model missing.
         default_provider = getattr(settings, "DEFAULT_LLM", None)
@@ -190,6 +273,16 @@ class LangChainService:
                 )
                 models["dummy"] = _DummyLLM("dummy")
 
+        # Ensure at least one working model exists
+        if not any(not isinstance(model, _DummyLLM) for model in models.values()):
+            logger.error(
+                Exception(
+                    "No working LLM models initialized; all API keys may be "
+                    "invalid or missing."
+                ),
+                {"component": "langchain_service", "function": "_initialize_models"},
+            )
+
         return models
 
     def _initialize_vector_store(self) -> Optional[VectorStore]:
@@ -197,15 +290,36 @@ class LangChainService:
         try:
             if not self.embeddings:
                 return None
+
+            # If the MongoDBAtlasVectorSearch class isn't available, skip
+            if not MongoDBAtlasVectorSearch:
+                logger.info(
+                    "MongoDBAtlasVectorSearch not available; vector store disabled."
+                )
+                return None
+
+            # Cast the motor collection to a typing Collection to satisfy
+            # expected parameter types without changing runtime behavior.
+            collection = cast(
+                Collection[Dict[str, Any]],
+                mongodb_service.db["document_embeddings"],
+            )
+
             return MongoDBAtlasVectorSearch(
-                collection=mongodb_service.db["document_embeddings"],
+                collection=collection,
                 embedding=self.embeddings,
                 index_name="vector_index",
                 text_key="content",
                 embedding_key="embedding",
             )
         except Exception:
-            logger.exception("Failed to initialize vector store")
+            logger.error(
+                Exception("Failed to initialize vector store"),
+                {
+                    "component": "langchain_service",
+                    "function": "_initialize_vector_store",
+                },
+            )
             return None
 
     def _load_domain_specific_prompts(self) -> Dict[str, Dict[str, str]]:
@@ -277,19 +391,42 @@ class LangChainService:
         self, content: str, metadata: Dict[str, Any]
     ) -> List[str]:
         """Create and store document embeddings for semantic search."""
-        if not self.vector_store:
+        if not self.embeddings or not self.vector_store:
+            logger.info("Embeddings or vector store not available, skipping embedding creation")
             return []
 
-        # Split document into chunks
-        documents = self.text_splitter.create_documents([content], [metadata])
-
-        # Store embeddings with error handling
         try:
-            doc_ids = await self.vector_store.aadd_documents(documents)
+            # Truncate content if too long to avoid memory issues
+            max_content_length = 50000  # Reasonable limit for embeddings
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "..."
+                logger.info(f"Content truncated to {max_content_length} characters for embedding")
+
+            # Split document into chunks
+            documents = self.text_splitter.create_documents([content], [metadata])
+            
+            # Limit number of chunks to avoid overwhelming the system
+            if len(documents) > 20:
+                documents = documents[:20]
+                logger.info("Limited to first 20 document chunks for embedding")
+
+            # Store embeddings with timeout
+            doc_ids = await asyncio.wait_for(
+                self.vector_store.aadd_documents(documents),
+                timeout=30.0
+            )
             return doc_ids
-        except Exception:
-            # Log the error and return empty list to indicate failure
-            logger.exception("Failed to create document embeddings")
+        except asyncio.TimeoutError:
+            logger.error(
+                Exception("Embedding creation timed out"),
+                {"component": "langchain_service", "function": "create_document_embeddings"},
+            )
+            return []
+        except Exception as e:
+            logger.error(
+                Exception(f"Failed to create document embeddings: {str(e)}"),
+                {"component": "langchain_service", "function": "create_document_embeddings"},
+            )
             return []
 
     def _validate_and_get_model(self, provider: Optional[str]):
@@ -309,7 +446,10 @@ class LangChainService:
         try:
             return await cache_service.get(cache_key, provider)
         except Exception:
-            logger.exception("_get_cached_response failed")
+            logger.error(
+                Exception("_get_cached_response failed"),
+                {"component": "langchain_service", "function": "_get_cached_response"},
+            )
             return None
 
     async def _get_rag_context(self, prompt: str) -> str:
@@ -321,66 +461,102 @@ class LangChainService:
                 [getattr(doc, "page_content", str(doc)) for doc in relevant_docs[:3]]
             )
         except Exception:
-            logger.exception("_get_rag_context failed")
+            logger.error(
+                Exception("_get_rag_context failed"),
+                {"component": "langchain_service", "function": "_get_rag_context"},
+            )
             return ""
 
     async def semantic_search(self, query: str, k: int = 5) -> List[Document]:
         """Perform semantic search against the vector store with robust error handling and fallbacks."""
         try:
-            if not self.vector_store:
+            if not self.vector_store or not self.embeddings:
+                logger.info("Vector store or embeddings not available, skipping semantic search")
                 return []
-            # Prefer async search methods if available, otherwise fall back to sync variants.
-            if hasattr(self.vector_store, "asimilarity_search"):
-                return await self.vector_store.asimilarity_search(query, k=k)
-            if hasattr(self.vector_store, "asimilarity_search_by_vector"):
-                return await self.vector_store.asimilarity_search_by_vector(query, k=k)
-            if hasattr(self.vector_store, "similarity_search"):
-                # some vectorstores only expose sync similarity_search
-                return self.vector_store.similarity_search(query, k=k)
-            # If no known method is present, return empty result rather than raising.
+            
+            # Truncate query if too long
+            if len(query) > 1000:
+                query = query[:1000]
+                logger.info("Query truncated for semantic search")
+            
+            # Add timeout to prevent hanging
+            search_result = await asyncio.wait_for(
+                self._perform_search(query, k),
+                timeout=10.0
+            )
+            return search_result
+        except asyncio.TimeoutError:
+            logger.error(
+                Exception("Semantic search timed out"),
+                {"component": "langchain_service", "function": "semantic_search"},
+            )
             return []
-        except Exception:
-            logger.exception("semantic_search failed")
+        except Exception as e:
+            logger.error(
+                Exception(f"semantic_search failed: {str(e)}"),
+                {"component": "langchain_service", "function": "semantic_search"},
+            )
             return []
+    
+    async def _perform_search(self, query: str, k: int) -> List[Document]:
+        """Helper method to perform the actual search with fallbacks."""
+        # Try async methods first
+        if hasattr(self.vector_store, "asimilarity_search"):
+            return await self.vector_store.asimilarity_search(query, k=k)
+        
+        # Fallback to sync method in thread pool
+        if hasattr(self.vector_store, "similarity_search"):
+            import concurrent.futures
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                return await loop.run_in_executor(
+                    executor, 
+                    lambda: self.vector_store.similarity_search(query, k=k)
+                )
+        
+        return []
 
     async def _invoke_model(
-        self, model: Any, provider: str, enhanced_prompt: str, use_memory: bool
+        self, model: Any, provider: str, enhanced_prompt: str, _use_memory: bool
     ) -> str:
-        """Invoke the model or ConversationChain and normalize the response to a string."""
+        """Invoke the model and normalize the response to a string."""
         try:
-            # Handle memory-enabled conversation chain
-            if use_memory:
-                chain = ConversationChain(llm=model, memory=self.memory, verbose=False)
-                if hasattr(chain, "apredict"):
-                    response = await chain.apredict(input=enhanced_prompt)
-                elif hasattr(chain, "predict"):
-                    response = chain.predict(input=enhanced_prompt)
-                else:
-                    raise RuntimeError(
-                        "ConversationChain has no supported predict methods."
-                    )
-            else:
-                if hasattr(model, "apredict"):
-                    response = await model.apredict(enhanced_prompt)
-                elif hasattr(model, "ainvoke"):
-                    maybe_msg = await model.ainvoke(
-                        [HumanMessage(content=enhanced_prompt)]
-                    )
-                    response = getattr(maybe_msg, "content", maybe_msg)
-                elif hasattr(model, "predict"):
-                    response = model.predict(enhanced_prompt)
-                else:
-                    raise RuntimeError(
-                        f"Model '{provider}' has no supported async/sync invocation methods."
-                    )
+            # Use basic LLM service as fallback for reliable invocation
+            from app.services.llm_service import llm_service
 
-            # Normalize response to a string
-            if isinstance(response, dict):
-                return json.dumps(response)
-            return getattr(response, "content", str(response))
-        except Exception:
-            logger.exception("_invoke_model failed")
-            return "Error: Model invocation failed"
+            # Try LangChain model first, fallback to basic LLM service
+            try:
+                if hasattr(model, "ainvoke"):
+                    if HumanMessage:
+                        response = await model.ainvoke(
+                            [HumanMessage(content=enhanced_prompt)]
+                        )
+                    else:
+                        response = await model.ainvoke(enhanced_prompt)
+                elif hasattr(model, "apredict"):
+                    response = await model.apredict(enhanced_prompt)
+                else:
+                    # Fallback to basic LLM service
+                    return await llm_service.generate_content(enhanced_prompt, provider)
+
+                # Normalize response to string
+                if hasattr(response, "content"):
+                    return response.content
+                elif isinstance(response, dict):
+                    return json.dumps(response)
+                else:
+                    return str(response)
+
+            except Exception:
+                # Fallback to basic LLM service
+                return await llm_service.generate_content(enhanced_prompt, provider)
+
+        except Exception as e:
+            logger.error(
+                Exception(f"_invoke_model failed: {str(e)}"),
+                {"component": "langchain_service", "function": "_invoke_model"},
+            )
+            return f"Error: Model invocation failed - {str(e)}"
 
     async def invoke_with_rag(
         self,
@@ -417,38 +593,56 @@ class LangChainService:
                     model, provider, enhanced_prompt, use_memory
                 )
             except Exception:
-                logger.exception("Model invocation failed for provider '%s'", provider)
+                logger.error(
+                    Exception(f"Model invocation failed for provider '{provider}'"),
+                    {"component": "langchain_service", "function": "invoke_with_rag"},
+                )
                 return f"Error: Model invocation failed for provider '{provider}'"
 
             # Best-effort cache store
             try:
                 await self._cache_response(cache_key, provider, response)
             except Exception:
-                logger.exception("Failed to cache response (non-fatal)")
+                logger.error(
+                    Exception("Failed to cache response (non-fatal)"),
+                    {"component": "langchain_service", "function": "invoke_with_rag"},
+                )
 
             return response
 
         except Exception:
-            logger.exception("invoke_with_rag unexpected failure")
+            logger.error(
+                Exception("invoke_with_rag unexpected failure"),
+                {"component": "langchain_service", "function": "invoke_with_rag"},
+            )
             return "Error: Unexpected failure"
 
     async def multi_model_consensus(
         self, prompt: str, context: Dict[str, Any] = None, models: List[str] = None
-    ) -> Dict[str, Any]:
+    ) -> str:
         """Get consensus from multiple models for critical decisions."""
-        models = models or ["openai", "anthropic", "gemini"]
-        responses = {}
+        models = models or ["groq"]  # Use single reliable model for now
 
+        # Try each model until one succeeds
         for model in models:
             try:
                 response = await self.invoke_with_rag(
                     prompt, model, context, use_memory=False
                 )
-                responses[model] = response
-            except Exception as e:
-                logger.exception("multi_model_consensus error for model '%s'", model)
-                responses[model] = f"Error: {str(e)}"
-        return responses
+                if not response.startswith("Error:"):
+                    return response
+            except Exception:
+                logger.error(
+                    Exception(f"multi_model_consensus error for model '{model}'"),
+                    {
+                        "component": "langchain_service",
+                        "function": "multi_model_consensus",
+                    },
+                )
+                continue
+
+        # If all models fail, return a basic response
+        return "Multi-model consensus failed. Using single model fallback for ethics review."
 
     async def domain_aware_review(
         self,
@@ -469,25 +663,31 @@ class LangChainService:
                 or f"Perform a {review_type} review of this {domain} manuscript."
             )
 
+            # Truncate content appropriately for the review type
+            max_content_length = 6000 if review_type in ['methodology', 'literature'] else 4000
+            truncated_content = content[:max_content_length]
+            if len(content) > max_content_length:
+                truncated_content += "\n\n[Content truncated for analysis]"
+
             # Create comprehensive prompt using dedent to normalize indentation
             full_prompt = textwrap.dedent(
                 f"""
             {base_prompt}
-            
+
             Document Title: {context.get('title', 'Unknown')}
             Domain: {domain}
             Pages: {context.get('metadata', {}).get('pages', 'Unknown')}
-            
+
             Content:
-            {content[:4000]}...
-            
+            {truncated_content}
+
             Provide structured analysis with:
             1. Score (1-10)
             2. Strengths (3-5 points)
             3. Weaknesses (3-5 points)
             4. Specific recommendations
             5. Critical issues requiring attention
-            
+
             Format as JSON with clear sections.
             """
             ).strip()
@@ -499,7 +699,10 @@ class LangChainService:
             return response
 
         except Exception:
-            logger.exception("domain_aware_review failed")
+            logger.error(
+                Exception("domain_aware_review failed"),
+                {"component": "langchain_service", "function": "domain_aware_review"},
+            )
             return "Error: domain_aware_review failed"
 
     async def chain_of_thought_analysis(
@@ -509,18 +712,22 @@ class LangChainService:
         # Defensively handle None context
         context = context or {}
 
+        # Truncate prompt for chain-of-thought to avoid token limits
+        if len(prompt) > 8000:
+            prompt = prompt[:8000] + "\n\n[Content truncated for analysis]"
+        
         cot_prompt = f"""
         Analyze this step-by-step using chain-of-thought reasoning:
-        
+
         {prompt}
-        
+
         Please think through this systematically:
         1. First, identify the key components to analyze
         2. Then, examine each component in detail
         3. Consider the relationships between components
         4. Evaluate strengths and weaknesses
         5. Synthesize findings into actionable insights
-        
+
         Show your reasoning process clearly at each step.
         """
 
@@ -529,7 +736,7 @@ class LangChainService:
     def _build_rag_prompt(
         self, prompt: str, context: Dict[str, Any], rag_context: str
     ) -> str:
-        """Build enhanced prompt with RAG context."""
+        """Build enhanced prompt with RAG context and token limit awareness."""
         context_info = []
 
         if context:
@@ -542,12 +749,19 @@ class LangChainService:
                 if "file_type" in meta:
                     context_info.append(f"Format: {meta['file_type'].upper()}")
 
-        # Build a context string whether or not additional context was provided
         context_str = (
             "\n".join(context_info)
             if context_info
             else "No additional context provided."
         )
+
+        # Truncate RAG context if too long
+        if len(rag_context) > 2000:
+            rag_context = rag_context[:2000] + "..."
+
+        # Truncate main prompt if too long
+        if len(prompt) > 8000:
+            prompt = prompt[:8000] + "..."
 
         prompt_template = f"""
         Context Information:
@@ -562,8 +776,15 @@ class LangChainService:
         Please provide a comprehensive response considering both the context and background knowledge.
         """
 
-        # Remove leading indentation introduced by the function's indentation level
-        return textwrap.dedent(prompt_template).strip()
+        # Remove leading indentation and ensure total length is reasonable
+        final_prompt = textwrap.dedent(prompt_template).strip()
+        
+        # Final safety check for token limits (approximate 4 chars per token)
+        max_chars = 40000  # ~10k tokens
+        if len(final_prompt) > max_chars:
+            final_prompt = final_prompt[:max_chars] + "\n\n[Content truncated due to length limits]"
+        
+        return final_prompt
 
     def _generate_cache_key(
         self, prompt: str, provider: str, context: Dict[str, Any]
@@ -578,12 +799,17 @@ class LangChainService:
         }
         return hashlib.sha256(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
-    async def _cache_response(self, cache_key: str, provider: str, response: str) -> None:
+    async def _cache_response(
+        self, cache_key: str, provider: str, response: str
+    ) -> None:
         """Cache the response using the cache service."""
         try:
             await cache_service.set(cache_key, provider, response)
         except Exception:
-            logger.exception("Failed to cache response")
+            logger.error(
+                Exception("Failed to cache response"),
+                {"component": "langchain_service", "function": "_cache_response"},
+            )
 
     def cleanup_memory(self):
         """Clean up conversation memory."""

@@ -5,16 +5,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.agents.orchestrator import orchestrator
-from app.models.responses import (
-    ReportResponse,
-    StatusResponse,
-    SubmissionResponse,
-    UploadResponse,
-)
+from app.models.responses import ReportResponse, SubmissionResponse, UploadResponse
 from app.models.schemas import TaskStatus
 from app.services.disclaimer_service import disclaimer_service
 from app.services.document_cache_service import document_cache_service
@@ -111,7 +106,7 @@ def _sanitize_and_validate_filename(raw_filename: str):
             status_code=400,
             detail=f"Invalid file type. Only {', '.join(sorted(allowed_extensions))} files are allowed",
         )
-    
+
     return safe_filename, ext, basename
 
 
@@ -165,7 +160,7 @@ async def _read_and_validate_content(
     return content, content_type
 
 
-async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
+async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezone: str):
     """Internal helper that performs validation, parsing, persistence, caching and starts background processing."""
     # Basic presence check and sanitize filename
     if not file or not getattr(file, "filename", None):
@@ -192,6 +187,11 @@ async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
         document_content
     )
     if cached_submission:
+        # Apply relaxed rate limiting for cached results
+        from app.middleware.rate_limiter import rate_limiter
+
+        rate_limiter.check_upload_limit(client_ip, is_cached=True)
+
         logger.info(
             f"Found cached submission for identical content: {safe_filename}",
             additional_info={"cached_id": cached_submission.get("_id")},
@@ -214,6 +214,11 @@ async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
         "status": TaskStatus.PENDING.value,
         "created_at": datetime.now(timezone.utc),
     }
+
+    # Apply full rate limiting for new submissions
+    from app.middleware.rate_limiter import rate_limiter
+
+    rate_limiter.check_upload_limit(client_ip, is_cached=False)
 
     submission_id = await mongodb_service.save_submission(submission_data)
 
@@ -250,7 +255,7 @@ async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
 
     # Kick off background processing without blocking
     task = asyncio.create_task(
-        orchestrator.process_submission(submission_id, x_timezone)
+        orchestrator.process_submission(submission_id, client_ip, x_timezone)
     )
     task.add_done_callback(lambda t: None)
 
@@ -269,6 +274,7 @@ async def _process_upload_manuscript(file: UploadFile, x_timezone: str):
     description="Upload a manuscript (PDF/DOCX) for AI-powered academic review. Initiates LangGraph workflow with parallel agent processing.",
 )
 async def upload_manuscript(
+    request: Request,
     file: UploadFile = File(
         description="Academic manuscript file (PDF or DOCX format)"
     ),
@@ -278,8 +284,9 @@ async def upload_manuscript(
     ),
 ):
     """Thin wrapper that delegates heavy work to an internal helper to reduce coupling and improve testability."""
+    client_ip = request.client.host if request.client else "unknown"
     try:
-        return await _process_upload_manuscript(file, x_timezone)
+        return await _process_upload_manuscript(file, client_ip, x_timezone)
     except HTTPException:
         raise
     except Exception as e:
@@ -400,57 +407,57 @@ async def get_submission(
         raise HTTPException(status_code=500, detail="Failed to retrieve submission")
 
 
-@router.get(
-    "/submissions/{submission_id}/status",
-    response_model=StatusResponse,
-    summary="Get Review Status",
-    description="Get real-time progress of LangGraph workflow processing.",
-)
-async def get_submission_status(submission_id: str):
-    """
-    Get real-time review progress status.
-
-    Returns the current status of the submission processed by LangGraph workflow.
-    The workflow handles all specialist agents internally.
-
-    Args:
-        submission_id: Unique identifier for the submission
-
-    Returns:
-        dict: Status summary with workflow progress
-    """
-    if not submission_id or not submission_id.strip():
-        raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
-
-    try:
-        submission = await mongodb_service.get_submission(submission_id)
-        if not submission:
-            raise HTTPException(status_code=404, detail=SUBMISSION_NOT_FOUND)
-
-        # LangGraph workflow manages all agents internally
-        status = submission["status"]
-
-        # Provide workflow-based task representation using a mapping for clarity
-        status_map = {
-            TaskStatus.PENDING.value: "pending",
-            TaskStatus.RUNNING.value: "running",
-            TaskStatus.COMPLETED.value: "completed",
-        }
-        task_status = status_map.get(status, "failed")
-        tasks = [{"agent_type": "workflow", "status": task_status}]
-
-        return {
-            "submission_id": submission_id,
-            "status": status,
-            "tasks": tasks,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(e, additional_info={"submission_id": submission_id})
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve submission status"
-        )
+# @router.get(
+#     "/submissions/{submission_id}/status",
+#     response_model=StatusResponse,
+#     summary="Get Review Status",
+#     description="Get real-time progress of LangGraph workflow processing.",
+# )
+# async def get_submission_status(submission_id: str):
+#     """
+#     Get real-time review progress status.
+#
+#     Returns the current status of the submission processed by LangGraph workflow.
+#     The workflow handles all specialist agents internally.
+#
+#     Args:
+#         submission_id: Unique identifier for the submission
+#
+#     Returns:
+#         dict: Status summary with workflow progress
+#     """
+#     if not submission_id or not submission_id.strip():
+#         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
+#
+#     try:
+#         submission = await mongodb_service.get_submission(submission_id)
+#         if not submission:
+#             raise HTTPException(status_code=404, detail=SUBMISSION_NOT_FOUND)
+#
+#         # LangGraph workflow manages all agents internally
+#         status = submission["status"]
+#
+#         # Provide workflow-based task representation using a mapping for clarity
+#         status_map = {
+#             TaskStatus.PENDING.value: "pending",
+#             TaskStatus.RUNNING.value: "running",
+#             TaskStatus.COMPLETED.value: "completed",
+#         }
+#         task_status = status_map.get(status, "failed")
+#         tasks = [{"agent_type": "workflow", "status": task_status}]
+#
+#         return {
+#             "submission_id": submission_id,
+#             "status": status,
+#             "tasks": tasks,
+#         }
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(e, additional_info={"submission_id": submission_id})
+#         raise HTTPException(
+#             status_code=500, detail="Failed to retrieve submission status"
+#         )
 
 
 @router.get(

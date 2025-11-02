@@ -1,8 +1,9 @@
-import logging
 import re
 from typing import Dict, List, Optional, Pattern, Tuple
 
-logger = logging.getLogger(__name__)
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ManuscriptAnalyzer:

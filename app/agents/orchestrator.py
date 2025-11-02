@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
+from app.middleware.rate_limiter import rate_limiter
 from app.models.schemas import TaskStatus
 from app.services.document_cache_service import document_cache_service
 from app.services.langgraph_workflow import langgraph_workflow
@@ -14,7 +15,7 @@ class OrchestratorAgent:
         self.logger = get_logger()
 
     async def process_submission(
-        self, submission_id: str, timezone_str: str = "UTC"
+        self, submission_id: str, client_ip: str = "unknown", timezone_str: str = "UTC"
     ) -> Dict[str, Any]:
         self.logger.log_review_process(
             submission_id=submission_id,
@@ -26,6 +27,9 @@ class OrchestratorAgent:
             submission = await mongodb_service.get_submission(submission_id)
             if not submission:
                 raise ValueError(f"Submission {submission_id} not found")
+
+            # Track concurrent processing
+            rate_limiter.check_concurrent_processing(client_ip, submission_id)
 
             # Update status to running
             await mongodb_service.update_submission(
@@ -64,6 +68,9 @@ class OrchestratorAgent:
                 ttl_hours=168,  # Cache completed reviews for 7 days
             )
 
+            # Release processing slot
+            rate_limiter.release_processing(client_ip, submission_id)
+
             self.logger.log_review_process(
                 submission_id=submission_id,
                 stage="orchestration_completed",
@@ -87,6 +94,9 @@ class OrchestratorAgent:
             except Exception:
                 err_tz = ZoneInfo("UTC")
 
+            # Release processing slot on failure
+            rate_limiter.release_processing(client_ip, submission_id)
+
             await mongodb_service.update_submission(
                 submission_id,
                 {
@@ -95,7 +105,6 @@ class OrchestratorAgent:
                     "completed_at": datetime.now(err_tz),
                 },
             )
-            raise
             raise
 
 

@@ -1,12 +1,12 @@
 import asyncio
-import logging
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from app.services.guardrails import guardrails
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GuardrailMiddleware:
@@ -70,7 +70,13 @@ class GuardrailMiddleware:
             return False, receive_with_body
 
         except Exception as e:
-            logger.error(f"Guardrail validation error: {e}")
+            logger.error(
+                e,
+                {
+                    "component": "guardrail_middleware",
+                    "function": "_process_submission_request",
+                },
+            )
             return False, None
 
     async def __call__(self, scope, receive, send):
@@ -101,8 +107,7 @@ def apply_review_guardrails(review_content: str) -> str:
         # Log any violations safely
         if violations:
             logger.info(
-                "Review guardrail violations: %s",
-                [getattr(v, "message", repr(v)) for v in violations],
+                f"Review guardrail violations: {[getattr(v, 'message', repr(v)) for v in violations]}"
             )
 
         # Sanitize content if needed

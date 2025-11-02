@@ -34,20 +34,26 @@ class DocumentCacheService:
         content_hash = self._generate_content_hash(content)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
 
-        await mongodb_service.db[self.collection_name].update_one(
-            {"content_hash": content_hash},
-            {
-                "$set": {
-                    "content_hash": content_hash,
-                    "submission_data": submission_data,
-                    "created_at": datetime.now(timezone.utc),
-                    "expires_at": expires_at,
-                    "access_count": 1,
-                },
-                "$inc": {"access_count": 1},
-            },
-            upsert=True,
+        # Try to increment access_count for existing document
+        result = await mongodb_service.db[self.collection_name].update_one(
+            {"content_hash": content_hash}, {"$inc": {"access_count": 1}}
         )
+
+        # If no document exists, create new one
+        if result.matched_count == 0:
+            await mongodb_service.db[self.collection_name].update_one(
+                {"content_hash": content_hash},
+                {
+                    "$set": {
+                        "content_hash": content_hash,
+                        "submission_data": submission_data,
+                        "created_at": datetime.now(timezone.utc),
+                        "expires_at": expires_at,
+                        "access_count": 1,
+                    }
+                },
+                upsert=True,
+            )
 
 
 document_cache_service = DocumentCacheService()

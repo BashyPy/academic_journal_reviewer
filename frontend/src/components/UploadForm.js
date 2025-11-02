@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import rateLimiter from '../services/rateLimiter';
 
 const UploadForm = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
@@ -21,14 +23,18 @@ const UploadForm = ({ onUploadSuccess }) => {
   };
 
   const handleInputChange = (e) => {
-    handleFileChange(e.target.files[0]);
+    if (!processing) {
+      handleFileChange(e.target.files[0]);
+    }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const droppedFile = e.dataTransfer.files[0];
-    handleFileChange(droppedFile);
+    if (!processing) {
+      const droppedFile = e.dataTransfer.files[0];
+      handleFileChange(droppedFile);
+    }
   };
 
   const handleDragOver = (e) => {
@@ -54,12 +60,16 @@ const UploadForm = ({ onUploadSuccess }) => {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('/api/v1/submissions/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const response = await rateLimiter.makeRequest('upload', () =>
+        axios.post('/api/v1/submissions/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      );
       onUploadSuccess(response.data.submission_id);
+      setProcessing(true);
+      setFile(null);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Network error occurred');
+      setError(err.response?.data?.detail || err.message || 'Network error occurred');
     } finally {
       setUploading(false);
     }
@@ -105,20 +115,28 @@ const UploadForm = ({ onUploadSuccess }) => {
       
       {error && <div className="error">❌ {error}</div>}
       
-      <button 
-        className="upload-button" 
-        onClick={handleUpload} 
-        disabled={uploading || !file}
-      >
-        {uploading ? (
-          <>
-            <div className="loading-spinner" style={{ width: '20px', height: '20px', display: 'inline-block', marginRight: '10px' }}></div>
-            Processing...
-          </>
-        ) : (
-          '🚀 Start Review'
-        )}
-      </button>
+      {processing ? (
+        <div className="processing-message">
+          <div className="loading-spinner"></div>
+          <p>📊 Review in progress...</p>
+          <p>You'll be notified when the analysis is complete.</p>
+        </div>
+      ) : (
+        <button 
+          className="upload-button" 
+          onClick={handleUpload} 
+          disabled={uploading || !file}
+        >
+          {uploading ? (
+            <>
+              <div className="loading-spinner" style={{ width: '20px', height: '20px', display: 'inline-block', marginRight: '10px' }}></div>
+              Uploading...
+            </>
+          ) : (
+            '🚀 Start Review'
+          )}
+        </button>
+      )}
     </div>
   );
 };

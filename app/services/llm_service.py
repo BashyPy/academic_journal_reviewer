@@ -15,13 +15,38 @@ class GroqProvider(LLMProvider):
         from groq import AsyncGroq
 
         self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        self.primary_model = "llama-3.3-70b-versatile"
+        self.fallback_model = "llama3-8b-8192"
 
     async def generate_content(self, prompt: str) -> str:
-        response = await self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-        )
+        # Truncate prompt to stay within Groq's token limits
+        # Groq llama-3.3-70b-versatile has 12k token limit
+        max_chars = 30000  # ~7.5k tokens, leaving room for response
+        if len(prompt) > max_chars:
+            prompt = prompt[:max_chars] + "\n\n[Content truncated due to token limits]"
+        
+        try:
+            # Try the larger model first
+            response = await self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=4000,
+            )
+        except Exception as e:
+            if "rate_limit_exceeded" in str(e) or "413" in str(e):
+                # Fallback to smaller model with further truncated prompt
+                if len(prompt) > 20000:
+                    prompt = prompt[:20000] + "\n\n[Content further truncated for smaller model]"
+                
+                response = await self.client.chat.completions.create(
+                    model="llama3-8b-8192",  # Smaller model with better token limits
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=3000,
+                )
+            else:
+                raise e
         return response.choices[0].message.content
 
 

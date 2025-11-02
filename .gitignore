@@ -35,3 +35,7 @@ requirements-test.txt
 ECS_EXECUTION_ROLE.txt
 trust-policy.json
 scripts
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

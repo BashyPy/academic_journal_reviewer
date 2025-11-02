@@ -1,7 +1,8 @@
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
+
+from app.utils.logger import get_logger
 
 
 @dataclass
@@ -198,8 +199,9 @@ class AcademicGuardrails:
                 review_normalized = str(review).lower()
         except Exception as exc:
             # Log the normalization error and proceed with an empty string to avoid crashing.
-            logging.getLogger(__name__).debug(
-                "Error normalizing review text: %s", exc, exc_info=True
+            get_logger(__name__).debug(
+                f"Error normalizing review text: {exc}",
+                {"component": "guardrails", "function": "_check_review_tone"},
             )
             review_normalized = ""
 
@@ -324,12 +326,14 @@ class AcademicGuardrails:
 
             sanitized = pattern.sub(_repl, sanitized)
         except re.error as exc:
-            logging.getLogger(__name__).debug(
-                "Regex sanitization failed: %s", exc, exc_info=True
+            get_logger(__name__).debug(
+                f"Regex sanitization failed: {exc}",
+                {"component": "guardrails", "function": "sanitize_content"},
             )
         except Exception as exc:
-            logging.getLogger(__name__).debug(
-                "Unexpected error during sanitize_content: %s", exc, exc_info=True
+            get_logger(__name__).debug(
+                f"Unexpected error during sanitize_content: {exc}",
+                {"component": "guardrails", "function": "sanitize_content"},
             )
 
         return sanitized

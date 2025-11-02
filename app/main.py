@@ -2,12 +2,13 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from app.api.routes import router
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.cache_routes import router as cache_router
+from app.api.routes import router
+from app.middleware.rate_limiter import rate_limit_middleware
 from app.utils.logger import get_logger
 
 # Initialize logger
@@ -25,7 +26,11 @@ app = FastAPI(
 rate_limit_storage = defaultdict(list)
 
 
-# Security and rate limiting middleware
+# Apply rate limiting middleware first
+app.middleware("http")(rate_limit_middleware)
+
+
+# Security middleware
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     start_time = time.time()
@@ -92,7 +97,9 @@ async def security_middleware(request: Request, call_next):
         response.headers["Strict-Transport-Security"] = (
             "max-age=31536000; includeSubDomains"
         )
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:"
+        )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Log response

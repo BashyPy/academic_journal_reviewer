@@ -160,12 +160,13 @@ graph TD
     H --> I[9. Deduplicate Issues]
     I --> J[10. Generate Final Report]
     J --> K[11. Save PDF Report]
-    K --> L[12. Editor Polls Status]
-    L --> M[13. Download PDF Report]
-    M --> N[14. Editorial Decision]
+    K --> L[12. Editor Views Processing Status]
+    L --> M[13. Auto-refresh Until Complete]
+    M --> N[14. Download PDF Report]
+    N --> O[15. Editorial Decision]
     
     style A fill:#e8f2ff,stroke:#333
-    style N fill:#e8f2ff,stroke:#333
+    style O fill:#e8f2ff,stroke:#333
     style D fill:#f3e5f5,stroke:#333
     style K fill:#f3e5f5,stroke:#333
 ```
@@ -264,11 +265,7 @@ file: manuscript.pdf (or .docx)
 
 Initiates LangGraph workflow with parallel agent processing
 
-#### Get Review Status
 
-```http
-GET /api/v1/submissions/{submission_id}/status
-```
 
 #### Get Final Report
 
@@ -320,14 +317,14 @@ The system automatically adjusts review criteria based on detected domain:
 
 1. **Document Upload**: PDF/DOCX parsing and content extraction
 2. **Domain Detection**: Automatic identification of academic field
-3. **Agent Orchestration**: Parallel execution of specialist agents
+3. **Background Processing**: All analysis runs automatically without user intervention
 4. **Methodology Analysis**: Research design, statistical methods
 5. **Literature Review**: Citation analysis, theoretical framework
 6. **Clarity Assessment**: Writing quality, presentation
 7. **Ethics Evaluation**: Research ethics, bias detection
 8. **Issue Deduplication**: Remove redundant findings
 9. **Synthesis**: Compile comprehensive final report
-10. **PDF Generation**: Professional formatted output
+10. **Auto-Display**: Report appears when processing completes
 
 ## 🛡️ Guardrails & Safety
 
