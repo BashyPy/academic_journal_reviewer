@@ -392,7 +392,9 @@ class LangChainService:
     ) -> List[str]:
         """Create and store document embeddings for semantic search."""
         if not self.embeddings or not self.vector_store:
-            logger.info("Embeddings or vector store not available, skipping embedding creation")
+            logger.info(
+                "Embeddings or vector store not available, skipping embedding creation"
+            )
             return []
 
         try:
@@ -400,11 +402,13 @@ class LangChainService:
             max_content_length = 50000  # Reasonable limit for embeddings
             if len(content) > max_content_length:
                 content = content[:max_content_length] + "..."
-                logger.info(f"Content truncated to {max_content_length} characters for embedding")
+                logger.info(
+                    f"Content truncated to {max_content_length} characters for embedding"
+                )
 
             # Split document into chunks
             documents = self.text_splitter.create_documents([content], [metadata])
-            
+
             # Limit number of chunks to avoid overwhelming the system
             if len(documents) > 20:
                 documents = documents[:20]
@@ -412,11 +416,10 @@ class LangChainService:
 
             # Store embeddings with timeout
             result = await asyncio.wait_for(
-                self.vector_store.aadd_documents(documents),
-                timeout=30.0
+                self.vector_store.aadd_documents(documents), timeout=30.0
             )
             # Handle different return types from vector store
-            if hasattr(result, 'inserted_ids'):
+            if hasattr(result, "inserted_ids"):
                 return result.inserted_ids
             elif isinstance(result, list):
                 return result
@@ -426,13 +429,19 @@ class LangChainService:
         except asyncio.TimeoutError:
             logger.error(
                 Exception("Embedding creation timed out"),
-                {"component": "langchain_service", "function": "create_document_embeddings"},
+                {
+                    "component": "langchain_service",
+                    "function": "create_document_embeddings",
+                },
             )
             return []
         except Exception as e:
             logger.error(
                 Exception(f"Failed to create document embeddings: {str(e)}"),
-                {"component": "langchain_service", "function": "create_document_embeddings"},
+                {
+                    "component": "langchain_service",
+                    "function": "create_document_embeddings",
+                },
             )
             return []
 
@@ -478,18 +487,19 @@ class LangChainService:
         """Perform semantic search against the vector store with robust error handling and fallbacks."""
         try:
             if not self.vector_store or not self.embeddings:
-                logger.info("Vector store or embeddings not available, skipping semantic search")
+                logger.info(
+                    "Vector store or embeddings not available, skipping semantic search"
+                )
                 return []
-            
+
             # Truncate query if too long
             if len(query) > 1000:
                 query = query[:1000]
                 logger.info("Query truncated for semantic search")
-            
+
             # Add timeout to prevent hanging
             search_result = await asyncio.wait_for(
-                self._perform_search(query, k),
-                timeout=10.0
+                self._perform_search(query, k), timeout=10.0
             )
             return search_result
         except asyncio.TimeoutError:
@@ -504,7 +514,7 @@ class LangChainService:
                 {"component": "langchain_service", "function": "semantic_search"},
             )
             return []
-    
+
     async def _perform_search(self, query: str, k: int) -> List[Document]:
         """Helper method to perform the actual search with fallbacks."""
         try:
@@ -512,23 +522,24 @@ class LangChainService:
             if hasattr(self.vector_store, "asimilarity_search"):
                 result = await self.vector_store.asimilarity_search(query, k=k)
                 # Handle cursor objects from MongoDB
-                if hasattr(result, 'to_list'):
+                if hasattr(result, "to_list"):
                     return await result.to_list(length=k)
-                elif hasattr(result, '__aiter__'):
+                elif hasattr(result, "__aiter__"):
                     return [doc async for doc in result]
                 return list(result) if result else []
-            
+
             # Fallback to sync method in thread pool
             if hasattr(self.vector_store, "similarity_search"):
                 import concurrent.futures
+
                 loop = asyncio.get_event_loop()
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     result = await loop.run_in_executor(
-                        executor, 
-                        lambda: self.vector_store.similarity_search(query, k=k)
+                        executor,
+                        lambda: self.vector_store.similarity_search(query, k=k),
                     )
                     return list(result) if result else []
-            
+
             return []
         except Exception as e:
             logger.error(
@@ -685,7 +696,9 @@ class LangChainService:
             )
 
             # Truncate content appropriately for the review type
-            max_content_length = 6000 if review_type in ['methodology', 'literature'] else 4000
+            max_content_length = (
+                6000 if review_type in ["methodology", "literature"] else 4000
+            )
             truncated_content = content[:max_content_length]
             if len(content) > max_content_length:
                 truncated_content += "\n\n[Content truncated for analysis]"
@@ -736,7 +749,7 @@ class LangChainService:
         # Truncate prompt for chain-of-thought to avoid token limits
         if len(prompt) > 8000:
             prompt = prompt[:8000] + "\n\n[Content truncated for analysis]"
-        
+
         cot_prompt = f"""
         Analyze this step-by-step using chain-of-thought reasoning:
 
@@ -799,12 +812,15 @@ class LangChainService:
 
         # Remove leading indentation and ensure total length is reasonable
         final_prompt = textwrap.dedent(prompt_template).strip()
-        
+
         # Final safety check for token limits (approximate 4 chars per token)
         max_chars = 40000  # ~10k tokens
         if len(final_prompt) > max_chars:
-            final_prompt = final_prompt[:max_chars] + "\n\n[Content truncated due to length limits]"
-        
+            final_prompt = (
+                final_prompt[:max_chars]
+                + "\n\n[Content truncated due to length limits]"
+            )
+
         return final_prompt
 
     def _generate_cache_key(

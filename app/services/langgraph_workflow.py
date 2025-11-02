@@ -151,10 +151,16 @@ class EnhancedLangGraphWorkflow:
         self, state: EnhancedReviewState
     ) -> EnhancedReviewState:
         # Small method-specific runners to keep branching minimal
-        async def _domain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
-            return await langchain_service.domain_aware_review(content, state["domain"], kind, enhanced_context)
+        async def _domain_runner(
+            kind: str, content: str, enhanced_context: Dict[str, Any]
+        ) -> str:
+            return await langchain_service.domain_aware_review(
+                content, state["domain"], kind, enhanced_context
+            )
 
-        async def _chain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
+        async def _chain_runner(
+            kind: str, content: str, enhanced_context: Dict[str, Any]
+        ) -> str:
             if kind == "clarity":
                 prompt = f"""
 Perform comprehensive clarity assessment of this {state['domain']} manuscript:
@@ -171,10 +177,16 @@ Analyze:
 
 Provide detailed feedback with specific examples and scores.
 """
-                return await langchain_service.chain_of_thought_analysis(prompt, enhanced_context)
-            return await langchain_service.chain_of_thought_analysis(content, enhanced_context)
+                return await langchain_service.chain_of_thought_analysis(
+                    prompt, enhanced_context
+                )
+            return await langchain_service.chain_of_thought_analysis(
+                content, enhanced_context
+            )
 
-        async def _multi_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
+        async def _multi_runner(
+            kind: str, content: str, enhanced_context: Dict[str, Any]
+        ) -> str:
             if kind == "ethics":
                 prompt = f"""
 Conduct thorough ethical evaluation of this {state['domain']} manuscript:
@@ -191,12 +203,20 @@ Evaluate:
 
 Provide comprehensive ethical assessment with recommendations.
 """
-                return await langchain_service.multi_model_consensus(prompt, enhanced_context)
-            return await langchain_service.multi_model_consensus(content, enhanced_context)
+                return await langchain_service.multi_model_consensus(
+                    prompt, enhanced_context
+                )
+            return await langchain_service.multi_model_consensus(
+                content, enhanced_context
+            )
 
         async def _run(kind: str, max_len: int, method: str) -> str:
             try:
-                content = state["content"][:max_len] if len(state["content"]) > max_len else state["content"]
+                content = (
+                    state["content"][:max_len]
+                    if len(state["content"]) > max_len
+                    else state["content"]
+                )
                 enhanced_context = {**state["context"], "content": content}
 
                 runner_map = {
@@ -257,7 +277,9 @@ Provide comprehensive ethical assessment with recommendations.
                         "traceback": traceback.format_exc(),
                     }
                 )
-                reviewed_results[k] = f"{k.title()} review failed due to internal error."
+                reviewed_results[k] = (
+                    f"{k.title()} review failed due to internal error."
+                )
             else:
                 reviewed_results[k] = res
 
@@ -357,7 +379,7 @@ Provide comprehensive ethical assessment with recommendations.
                 "configurable": {
                     "thread_id": str(submission_data.get("_id", "unknown"))
                 },
-                "recursion_limit": 50  # Increase from default 25 to 50
+                "recursion_limit": 50,  # Increase from default 25 to 50
             }
             final_state = await self.workflow.ainvoke(initial_state, config)
             return final_state.get("final_report", "Review completed with errors")

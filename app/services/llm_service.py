@@ -24,7 +24,7 @@ class GroqProvider(LLMProvider):
         max_chars = 30000  # ~7.5k tokens, leaving room for response
         if len(prompt) > max_chars:
             prompt = prompt[:max_chars] + "\n\n[Content truncated due to token limits]"
-        
+
         try:
             # Try the larger model first
             response = await self.client.chat.completions.create(
@@ -37,8 +37,11 @@ class GroqProvider(LLMProvider):
             if "rate_limit_exceeded" in str(e) or "413" in str(e):
                 # Fallback to smaller model with further truncated prompt
                 if len(prompt) > 20000:
-                    prompt = prompt[:20000] + "\n\n[Content further truncated for smaller model]"
-                
+                    prompt = (
+                        prompt[:20000]
+                        + "\n\n[Content further truncated for smaller model]"
+                    )
+
                 response = await self.client.chat.completions.create(
                     model="llama3-8b-8192",  # Smaller model with better token limits
                     messages=[{"role": "user", "content": prompt}],
