@@ -1,0 +1,23 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#fff','primaryBorderColor':'#333'}}}%%
+stateDiagram-v2
+    [*] --> NotRegistered
+    NotRegistered --> Registering: Click Register
+    Registering --> BiometricPrompt: Generate Challenge
+    BiometricPrompt --> Registered: Success
+    BiometricPrompt --> NotRegistered: Cancel or Fail
+    
+    Registered --> Authenticating: Click Login
+    Authenticating --> BiometricAuth: Generate Challenge
+    BiometricAuth --> Authenticated: Success
+    BiometricAuth --> Registered: Cancel or Fail
+    
+    Authenticated --> [*]: Logout
+    Registered --> NotRegistered: Delete Passkey
+    
+    note right of Registered
+        User can have multiple passkeys registered
+    end note
+    
+    note right of BiometricAuth
+        Biometric data never leaves the device
+    end note

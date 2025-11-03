@@ -1,0 +1,33 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#3498db','primaryTextColor':'#000','primaryBorderColor':'#2980b9','lineColor':'#34495e','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ecf0f1'}}}%%
+erDiagram
+    REVIEW_ASSIGNMENTS ||--|| SUBMISSIONS : references
+    REVIEW_ASSIGNMENTS ||--|| USERS : "assigned to"
+    
+    REVIEW_ASSIGNMENTS {
+        ObjectId _id PK
+        String submission_id FK
+        String reviewer_id FK
+        String status
+        Date assigned_at
+        Date started_at
+        Date completed_at
+        Date due_date
+        Object review
+        String recommendation
+        Number overall_score
+    }
+    
+    SUBMISSIONS {
+        ObjectId _id PK
+        String title
+        String content
+        String detected_domain
+        String status
+    }
+    
+    USERS {
+        ObjectId _id PK
+        String email
+        String name
+        String role
+    }

@@ -1,0 +1,29 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#3498db','primaryTextColor':'#000','primaryBorderColor':'#2980b9','lineColor':'#34495e','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ecf0f1'}}}%%
+sequenceDiagram
+    participant R as Reviewer
+    participant UI as Dashboard UI
+    participant API as Backend API
+    participant DB as MongoDB
+    
+    R->>UI: Access Dashboard
+    UI->>API: GET /reviewer/dashboard/stats
+    API->>DB: Query assignments
+    DB-->>API: Return data
+    API-->>UI: Statistics
+    UI-->>R: Display Overview
+    
+    R->>UI: Click "Start Review"
+    UI->>API: POST /assignments/{id}/start
+    API->>DB: Update status to "in_progress"
+    DB-->>API: Confirm update
+    API-->>UI: Success response
+    UI-->>R: Show Review Form
+    
+    R->>UI: Fill Review Form
+    R->>UI: Click "Submit Review"
+    UI->>API: POST /assignments/{id}/submit
+    API->>DB: Save review data
+    API->>DB: Update status to "completed"
+    DB-->>API: Confirm save
+    API-->>UI: Success response
+    UI-->>R: Show confirmation

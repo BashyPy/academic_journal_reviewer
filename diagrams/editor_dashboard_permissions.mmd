@@ -1,0 +1,20 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e8f5e9','primaryTextColor':'#000','primaryBorderColor':'#2e7d32','lineColor':'#333','secondaryColor':'#ffebee','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff','tertiaryBkg':'#ffffff'}}}%%
+graph TD
+    A[User Login] --> B{Check Role}
+    B -->|editor| C[Grant Editor Access]
+    B -->|admin| C
+    B -->|super_admin| C
+    B -->|author| D[Deny Access]
+    B -->|reviewer| D
+    
+    C --> E[Editor Dashboard]
+    E --> F[View All Submissions]
+    E --> G[Make Decisions]
+    E --> H[Reprocess Reviews]
+    E --> I[View Analytics]
+    
+    D --> J[Redirect to Author Dashboard]
+    
+    style C fill:#4caf50,stroke:#2e7d32,color:#fff
+    style D fill:#f44336,stroke:#c62828,color:#fff
+    style E fill:#2196f3,stroke:#1565c0,color:#fff

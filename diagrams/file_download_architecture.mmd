@@ -1,0 +1,240 @@
+```mermaid
+graph TD
+    A[User Request] --> B{Authentication}
+    B -->|Invalid Token| C[401 Unauthorized]
+    B -->|Valid Token| D{Check Role & Permissions}
+    
+    D -->|Author| E{Own Submission?}
+    D -->|Reviewer| F{Assigned Submission?}
+    D -->|Editor/Admin/Super Admin| G[Access Granted]
+    
+    E -->|Yes| G
+    E -->|No| H[403 Forbidden]
+    
+    F -->|Yes| G
+    F -->|No| H
+    
+    G --> I{Download Type?}
+    
+    I -->|Manuscript| J{Original File Exists?}
+    I -->|Review PDF| K{Review Completed?}
+    
+    J -->|Yes| L[Retrieve Original File]
+    J -->|No| M[404 Not Found]
+    
+    K -->|Yes| N[Generate Review PDF]
+    K -->|No| O[400 Bad Request]
+    
+    L --> P[Stream File to User]
+    N --> P
+    
+    P --> Q[Log Download Event]
+    Q --> R[Return File]
+    
+    style A fill:#e1f5ff,stroke:#333
+    style G fill:#d4edda,stroke:#333
+    style H fill:#f8d7da,stroke:#333
+    style C fill:#f8d7da,stroke:#333
+    style M fill:#f8d7da,stroke:#333
+    style O fill:#f8d7da,stroke:#333
+    style R fill:#d4edda,stroke:#333
+```
+
+## File Download Architecture
+
+### Permission Flow
+
+```mermaid
+graph LR
+    A[User] --> B{Role}
+    
+    B -->|Author| C[Own Submissions Only]
+    B -->|Reviewer| D[Assigned Submissions]
+    B -->|Editor| E[All Submissions]
+    B -->|Admin| E
+    B -->|Super Admin| E
+    
+    C --> F[Download Allowed]
+    D --> F
+    E --> F
+    
+    style F fill:#d4edda,stroke:#333
+```
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as Download API
+    participant Auth as Auth Service
+    participant DB as MongoDB
+    participant Audit as Audit Logger
+    
+    U->>API: GET /downloads/manuscripts/{id}
+    API->>Auth: Verify Token
+    Auth-->>API: User Info
+    
+    API->>DB: Get Submission
+    DB-->>API: Submission Data
+    
+    API->>API: Check Permissions
+    
+    alt Permission Granted
+        API->>DB: Retrieve File
+        DB-->>API: File Content
+        API->>Audit: Log Download
+        API-->>U: Stream File
+    else Permission Denied
+        API-->>U: 403 Forbidden
+    end
+```
+
+### Database Schema
+
+```mermaid
+erDiagram
+    SUBMISSIONS ||--o{ USERS : "owned by"
+    SUBMISSIONS {
+        ObjectId _id PK
+        String title
+        String content
+        Binary original_file
+        String user_id FK
+        Object file_metadata
+        String status
+        String final_report
+        DateTime created_at
+        DateTime completed_at
+    }
+    
+    USERS {
+        ObjectId _id PK
+        String email
+        String name
+        String role
+        Boolean is_active
+    }
+    
+    REVIEW_ASSIGNMENTS ||--|| SUBMISSIONS : references
+    REVIEW_ASSIGNMENTS ||--|| USERS : "assigned to"
+    REVIEW_ASSIGNMENTS {
+        ObjectId _id PK
+        String submission_id FK
+        String reviewer_id FK
+        String status
+        DateTime assigned_at
+    }
+```
+
+### Role-Based Access Matrix
+
+```mermaid
+graph TD
+    A[Download Request] --> B{User Role}
+    
+    B -->|Author| C{Check Ownership}
+    B -->|Reviewer| D{Check Assignment}
+    B -->|Editor| E[Grant Access]
+    B -->|Admin| E
+    B -->|Super Admin| E
+    
+    C -->|user_id matches| E
+    C -->|user_id mismatch| F[Deny Access]
+    
+    D -->|reviewer_id matches| E
+    D -->|reviewer_id mismatch| F
+    
+    E --> G[Allow Download]
+    F --> H[403 Forbidden]
+    
+    style G fill:#d4edda,stroke:#333
+    style H fill:#f8d7da,stroke:#333
+```
+
+### Download Endpoint Flow
+
+```mermaid
+flowchart TD
+    Start([User Clicks Download]) --> Auth{Authenticated?}
+    Auth -->|No| Login[Redirect to Login]
+    Auth -->|Yes| GetSub[Fetch Submission Details]
+    
+    GetSub --> CheckPerm{Has Permission?}
+    CheckPerm -->|No| Error403[Show 403 Error]
+    CheckPerm -->|Yes| CheckType{Download Type?}
+    
+    CheckType -->|Manuscript| CheckFile{File Exists?}
+    CheckType -->|Review| CheckStatus{Review Complete?}
+    
+    CheckFile -->|No| Error404[Show 404 Error]
+    CheckFile -->|Yes| Download[Download File]
+    
+    CheckStatus -->|No| Error400[Show 400 Error]
+    CheckStatus -->|Yes| Download
+    
+    Download --> LogEvent[Log Download Event]
+    LogEvent --> Success([Download Complete])
+    
+    style Success fill:#d4edda,stroke:#333
+    style Error403 fill:#f8d7da,stroke:#333
+    style Error404 fill:#f8d7da,stroke:#333
+    style Error400 fill:#f8d7da,stroke:#333
+```
+
+### Integration with Dashboards
+
+```mermaid
+graph TD
+    A[Dashboard] --> B[Fetch Submission]
+    B --> C[API Returns Data + download_urls]
+    
+    C --> D{download_urls.manuscript}
+    C --> E{download_urls.review}
+    
+    D -->|Available| F[Show Download Button]
+    D -->|Null| G[Hide Button]
+    
+    E -->|Available| H[Show Download Button]
+    E -->|Null| I[Hide Button]
+    
+    F --> J[User Clicks]
+    H --> J
+    
+    J --> K[Fetch with Auth Token]
+    K --> L[Browser Downloads File]
+    
+    style F fill:#d4edda,stroke:#333
+    style H fill:#d4edda,stroke:#333
+    style L fill:#d4edda,stroke:#333
+```
+
+### Error Handling Flow
+
+```mermaid
+flowchart TD
+    Request[Download Request] --> Validate{Validate Request}
+    
+    Validate -->|Invalid ID| E1[400 Bad Request]
+    Validate -->|Valid| Auth{Authenticate}
+    
+    Auth -->|No Token| E2[401 Unauthorized]
+    Auth -->|Invalid Token| E2
+    Auth -->|Valid Token| Perm{Check Permission}
+    
+    Perm -->|No Access| E3[403 Forbidden]
+    Perm -->|Has Access| Fetch{Fetch Resource}
+    
+    Fetch -->|Not Found| E4[404 Not Found]
+    Fetch -->|Found| Status{Check Status}
+    
+    Status -->|Not Ready| E5[400 Not Completed]
+    Status -->|Ready| Success[200 OK + File]
+    
+    style Success fill:#d4edda,stroke:#333
+    style E1 fill:#f8d7da,stroke:#333
+    style E2 fill:#f8d7da,stroke:#333
+    style E3 fill:#f8d7da,stroke:#333
+    style E4 fill:#f8d7da,stroke:#333
+    style E5 fill:#f8d7da,stroke:#333
+```

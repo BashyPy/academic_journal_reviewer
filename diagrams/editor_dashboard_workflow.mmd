@@ -1,0 +1,24 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e3f2fd','primaryTextColor':'#000','primaryBorderColor':'#1976d2','lineColor':'#333','secondaryColor':'#fff3e0','tertiaryColor':'#f3e5f5','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff','labelTextColor':'#000','noteBorderColor':'#333','noteBkgColor':'#fff9c4','noteTextColor':'#000'}}}%%
+stateDiagram-v2
+    [*] --> Submitted
+    Submitted --> Processing
+    Processing --> Completed
+    Processing --> Failed
+    
+    Completed --> UnderReview: Editor Views
+    UnderReview --> DecisionMade: Accept/Revise/Reject
+    
+    Failed --> Reprocessing: Editor Reprocesses
+    Reprocessing --> Processing
+    
+    DecisionMade --> [*]
+    
+    note right of UnderReview
+        Editor reviews AI-generated
+        report and makes decision
+    end note
+    
+    note right of DecisionMade
+        Decision logged with
+        comments and timestamp
+    end note

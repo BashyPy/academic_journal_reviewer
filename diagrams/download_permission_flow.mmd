@@ -1,0 +1,13 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+graph LR
+    A[User] --> B{Role}
+    
+    B -->|Author| C[Own Submissions Only]
+    B -->|Reviewer| D[Assigned Submissions]
+    B -->|Editor| E[All Submissions]
+    B -->|Admin| E
+    B -->|Super Admin| E
+    
+    C --> F[Download Allowed]
+    D --> F
+    E --> F

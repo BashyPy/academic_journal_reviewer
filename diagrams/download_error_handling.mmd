@@ -1,0 +1,19 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+flowchart TD
+    Request[Download Request] --> Validate{Validate Request}
+    
+    Validate -->|Invalid ID| E1[400 Bad Request]
+    Validate -->|Valid| Auth{Authenticate}
+    
+    Auth -->|No Token| E2[401 Unauthorized]
+    Auth -->|Invalid Token| E2
+    Auth -->|Valid Token| Perm{Check Permission}
+    
+    Perm -->|No Access| E3[403 Forbidden]
+    Perm -->|Has Access| Fetch{Fetch Resource}
+    
+    Fetch -->|Not Found| E4[404 Not Found]
+    Fetch -->|Found| Status{Check Status}
+    
+    Status -->|Not Ready| E5[400 Not Completed]
+    Status -->|Ready| Success[200 OK + File]

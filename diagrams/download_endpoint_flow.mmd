@@ -1,0 +1,21 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+flowchart TD
+    Start([User Clicks Download]) --> Auth{Authenticated?}
+    Auth -->|No| Login[Redirect to Login]
+    Auth -->|Yes| GetSub[Fetch Submission Details]
+    
+    GetSub --> CheckPerm{Has Permission?}
+    CheckPerm -->|No| Error403[Show 403 Error]
+    CheckPerm -->|Yes| CheckType{Download Type?}
+    
+    CheckType -->|Manuscript| CheckFile{File Exists?}
+    CheckType -->|Review| CheckStatus{Review Complete?}
+    
+    CheckFile -->|No| Error404[Show 404 Error]
+    CheckFile -->|Yes| Download[Download File]
+    
+    CheckStatus -->|No| Error400[Show 400 Error]
+    CheckStatus -->|Yes| Download
+    
+    Download --> LogEvent[Log Download Event]
+    LogEvent --> Success([Download Complete])

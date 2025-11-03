@@ -1,0 +1,33 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+erDiagram
+    SUBMISSIONS ||--o{ USERS : "owned by"
+    SUBMISSIONS {
+        ObjectId _id PK
+        String title
+        String content
+        Binary original_file
+        String user_id FK
+        Object file_metadata
+        String status
+        String final_report
+        DateTime created_at
+        DateTime completed_at
+    }
+    
+    USERS {
+        ObjectId _id PK
+        String email
+        String name
+        String role
+        Boolean is_active
+    }
+    
+    REVIEW_ASSIGNMENTS ||--|| SUBMISSIONS : references
+    REVIEW_ASSIGNMENTS ||--|| USERS : "assigned to"
+    REVIEW_ASSIGNMENTS {
+        ObjectId _id PK
+        String submission_id FK
+        String reviewer_id FK
+        String status
+        DateTime assigned_at
+    }

@@ -1,0 +1,22 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e8f5e9','primaryTextColor':'#000','primaryBorderColor':'#2e7d32','lineColor':'#333','secondaryColor':'#fff3e0','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+graph TD
+    A[EditorDashboard.js] --> B[Overview Tab]
+    A --> C[Submissions Tab]
+    A --> D[Analytics Tab]
+    
+    B --> E[StatsGrid]
+    B --> F[PerformanceCard]
+    B --> G[RecentTable]
+    
+    C --> H[SubmissionsList]
+    C --> I[SubmissionCard]
+    C --> J[DetailModal]
+    
+    D --> K[TimelineChart]
+    D --> L[DomainChart]
+    
+    I --> M[ActionButtons]
+    M --> N[DecisionModal]
+    
+    style A fill:#4caf50,stroke:#2e7d32,color:#fff
+    style N fill:#ff9800,stroke:#e65100,color:#fff

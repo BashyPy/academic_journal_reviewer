@@ -1,0 +1,57 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'primaryColor': '#3498db', 'secondaryColor': '#2ecc71', 'tertiaryColor': '#e74c3c'}}}%%
+erDiagram
+    USERS ||--o{ SUBMISSIONS : creates
+    USERS ||--o{ AUDIT_LOGS : generates
+    USERS ||--o{ API_KEYS : owns
+    SUBMISSIONS ||--o{ AGENT_TASKS : has
+    SUBMISSIONS ||--o{ AUDIT_LOGS : tracks
+    
+    USERS {
+        ObjectId _id PK
+        string email UK
+        string password_hash
+        string name
+        string role
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
+    
+    SUBMISSIONS {
+        ObjectId _id PK
+        string title
+        string content
+        string status
+        string detected_domain
+        datetime created_at
+        datetime completed_at
+    }
+    
+    AGENT_TASKS {
+        ObjectId _id PK
+        string submission_id FK
+        string agent_type
+        string status
+        object critique
+        datetime created_at
+    }
+    
+    AUDIT_LOGS {
+        ObjectId _id PK
+        string event_type
+        string user_id FK
+        string ip_address
+        string severity
+        object details
+        datetime timestamp
+    }
+    
+    API_KEYS {
+        ObjectId _id PK
+        string key UK
+        string name
+        string role
+        boolean is_active
+        datetime created_at
+        datetime expires_at
+    }

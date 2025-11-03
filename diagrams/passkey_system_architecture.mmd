@@ -1,0 +1,22 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#fff','primaryBorderColor':'#333'}}}%%
+graph LR
+    subgraph Device[User Device]
+        A[Browser] --> B[WebAuthn API]
+        B --> C[Platform Authenticator]
+        C --> D[Secure Enclave TPM]
+        D --> E[Biometric Sensor]
+    end
+    
+    subgraph Backend[AARIS Backend]
+        F[FastAPI] --> G[WebAuthn Service]
+        G --> H[MongoDB]
+        H --> I[Passkeys Collection]
+        H --> J[Challenges Collection]
+    end
+    
+    A <-->|HTTPS| F
+    
+    style C fill:#4CAF50,stroke:#333
+    style D fill:#FF9800,stroke:#333
+    style E fill:#2196F3,stroke:#333
+    style G fill:#9C27B0,stroke:#333

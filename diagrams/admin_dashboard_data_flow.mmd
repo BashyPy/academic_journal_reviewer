@@ -1,0 +1,43 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'primaryColor': '#3498db', 'secondaryColor': '#2ecc71', 'tertiaryColor': '#e74c3c'}}}%%
+sequenceDiagram
+    participant U as Super Admin User
+    participant F as Frontend Dashboard
+    participant A as API Routes
+    participant Auth as Authentication
+    participant S as Services
+    participant DB as MongoDB
+    
+    U->>F: Access Dashboard
+    F->>A: GET /dashboard/stats
+    A->>Auth: Validate Token & Role
+    Auth->>Auth: Check super_admin role
+    Auth-->>A: Authorized
+    A->>S: Request Statistics
+    S->>DB: Query Collections
+    DB-->>S: Return Data
+    S-->>A: Formatted Stats
+    A-->>F: JSON Response
+    F-->>U: Display Dashboard
+    
+    U->>F: Create User
+    F->>A: POST /users/create
+    A->>Auth: Validate & Authorize
+    Auth-->>A: Authorized
+    A->>S: Create User Service
+    S->>DB: Insert User
+    DB-->>S: User Created
+    S->>DB: Log Audit Event
+    S-->>A: Success Response
+    A-->>F: User Created
+    F-->>U: Show Success Message
+    
+    U->>F: Reprocess Submission
+    F->>A: POST /submissions/{id}/reprocess
+    A->>Auth: Validate & Authorize
+    Auth-->>A: Authorized
+    A->>DB: Update Submission Status
+    DB-->>A: Updated
+    A->>S: Log Audit Event
+    S->>DB: Insert Audit Log
+    A-->>F: Success Response
+    F-->>U: Show Success Message

@@ -1,0 +1,32 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+graph TD
+    A[User Request] --> B{Authentication}
+    B -->|Invalid Token| C[401 Unauthorized]
+    B -->|Valid Token| D{Check Role & Permissions}
+    
+    D -->|Author| E{Own Submission?}
+    D -->|Reviewer| F{Assigned Submission?}
+    D -->|Editor/Admin/Super Admin| G[Access Granted]
+    
+    E -->|Yes| G
+    E -->|No| H[403 Forbidden]
+    
+    F -->|Yes| G
+    F -->|No| H
+    
+    G --> I{Download Type?}
+    
+    I -->|Manuscript| J{Original File Exists?}
+    I -->|Review PDF| K{Review Completed?}
+    
+    J -->|Yes| L[Retrieve Original File]
+    J -->|No| M[404 Not Found]
+    
+    K -->|Yes| N[Generate Review PDF]
+    K -->|No| O[400 Bad Request]
+    
+    L --> P[Stream File to User]
+    N --> P
+    
+    P --> Q[Log Download Event]
+    Q --> R[Return File]

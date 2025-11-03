@@ -1,0 +1,20 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '16px', 'primaryColor': '#3498db', 'secondaryColor': '#2ecc71', 'tertiaryColor': '#e74c3c'}}}%%
+graph TD
+    A[User Request] --> B{Valid Token?}
+    B -->|No| C[401 Unauthorized]
+    B -->|Yes| D{Super Admin Role?}
+    D -->|No| E[403 Forbidden]
+    D -->|Yes| F{Rate Limit OK?}
+    F -->|No| G[429 Too Many Requests]
+    F -->|Yes| H{IP Blocked?}
+    H -->|Yes| I[403 Access Denied]
+    H -->|No| J[Process Request]
+    J --> K[Log Audit Event]
+    K --> L[Return Response]
+    
+    style A fill:#3498db,stroke:#333,stroke-width:2px
+    style J fill:#2ecc71,stroke:#333,stroke-width:2px
+    style C fill:#e74c3c,stroke:#333,stroke-width:2px
+    style E fill:#e74c3c,stroke:#333,stroke-width:2px
+    style G fill:#f39c12,stroke:#333,stroke-width:2px
+    style I fill:#e74c3c,stroke:#333,stroke-width:2px

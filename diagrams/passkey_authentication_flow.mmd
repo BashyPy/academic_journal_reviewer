@@ -1,0 +1,40 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#fff','primaryBorderColor':'#333'}}}%%
+graph TD
+    A[User Opens Login Page] --> B{Biometric Available?}
+    B -->|Yes| C[Show Biometric Login Button]
+    B -->|No| D[Show Password Login Only]
+    
+    C --> E{User Choice}
+    E -->|Password| F[Traditional Login]
+    E -->|Biometric| G[Click Biometric Login]
+    
+    G --> H[Frontend: Request Auth Options]
+    H --> I[Backend: Generate Challenge]
+    I --> J[Frontend: Receive Challenge]
+    J --> K[Browser: navigator.credentials.get]
+    K --> L[Device: Show Biometric Prompt]
+    
+    L --> M{Biometric Success?}
+    M -->|No| N[Show Error Message]
+    M -->|Yes| O[Device: Sign Challenge]
+    
+    O --> P[Browser: Return Assertion]
+    P --> Q[Frontend: Send to Backend]
+    Q --> R[Backend: Verify Assertion]
+    
+    R --> S{Valid?}
+    S -->|No| T[Return 401 Error]
+    S -->|Yes| U[Generate JWT + API Key]
+    
+    U --> V[Return Auth Tokens]
+    V --> W[Frontend: Store Tokens]
+    W --> X[Redirect to Dashboard]
+    
+    N --> Y[User Can Retry]
+    T --> Y
+    
+    style G fill:#4CAF50,stroke:#333
+    style L fill:#2196F3,stroke:#333
+    style O fill:#FF9800,stroke:#333
+    style U fill:#9C27B0,stroke:#333
+    style X fill:#4CAF50,stroke:#333

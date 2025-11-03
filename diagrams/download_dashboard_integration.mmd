@@ -1,0 +1,19 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
+graph TD
+    A[Dashboard] --> B[Fetch Submission]
+    B --> C[API Returns Data + download_urls]
+    
+    C --> D{download_urls.manuscript}
+    C --> E{download_urls.review}
+    
+    D -->|Available| F[Show Download Button]
+    D -->|Null| G[Hide Button]
+    
+    E -->|Available| H[Show Download Button]
+    E -->|Null| I[Hide Button]
+    
+    F --> J[User Clicks]
+    H --> J
+    
+    J --> K[Fetch with Auth Token]
+    K --> L[Browser Downloads File]

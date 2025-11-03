@@ -1,0 +1,44 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#fff','primaryBorderColor':'#333'}}}%%
+sequenceDiagram
+    participant U as User
+    participant B as Browser
+    participant F as Frontend
+    participant API as Backend API
+    participant DB as MongoDB
+    participant D as Device Biometric
+
+    Note over U,D: Passkey Registration Flow
+    
+    U->>F: Navigate to Profile
+    U->>F: Click Register Biometric
+    F->>API: POST /passkey/register-options
+    API->>DB: Create challenge
+    API->>F: Return WebAuthn options
+    F->>B: navigator.credentials.create()
+    B->>D: Request biometric authentication
+    D->>U: Show fingerprint/Face ID prompt
+    U->>D: Provide biometric
+    D->>B: Return credential
+    B->>F: Return credential object
+    F->>API: POST /passkey/register
+    API->>DB: Store public key and credential
+    API->>F: Success response
+    F->>U: Show success message
+
+    Note over U,D: Passkey Authentication Flow
+    
+    U->>F: Click Login with Biometric
+    F->>API: POST /passkey/auth-options
+    API->>DB: Create challenge
+    API->>F: Return challenge
+    F->>B: navigator.credentials.get()
+    B->>D: Request biometric authentication
+    D->>U: Show fingerprint/Face ID prompt
+    U->>D: Provide biometric
+    D->>B: Return assertion
+    B->>F: Return assertion object
+    F->>API: POST /passkey/authenticate
+    API->>DB: Verify assertion and get user
+    API->>F: Return JWT and API key
+    F->>F: Store auth tokens
+    F->>U: Redirect to dashboard

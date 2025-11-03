@@ -1,0 +1,96 @@
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#fff','primaryBorderColor':'#333'}}}%%
+graph TB
+    subgraph Frontend["Frontend - React Dashboard"]
+        A[AuthorDashboard.js]
+        A1[Overview Tab]
+        A2[My Submissions Tab]
+        A3[Analytics Tab]
+        
+        A --> A1
+        A --> A2
+        A --> A3
+        
+        A1 --> A1a[Stats Cards]
+        A1 --> A1b[Performance Metrics]
+        A1 --> A1c[Recent Submissions]
+        
+        A2 --> A2a[Submissions List]
+        A2 --> A2b[Status Filter]
+        A2 --> A2c[Download/Delete Actions]
+        
+        A3 --> A3a[Timeline Chart]
+        A3 --> A3b[Domain Distribution]
+    end
+    
+    subgraph API["API Layer - FastAPI"]
+        B[author_dashboard_routes.py]
+        B1[GET /dashboard/stats]
+        B2[GET /submissions]
+        B3[GET /submissions/:id]
+        B4[GET /analytics/timeline]
+        B5[GET /analytics/domains]
+        B6[GET /analytics/performance]
+        B7[DELETE /submissions/:id]
+        
+        B --> B1
+        B --> B2
+        B --> B3
+        B --> B4
+        B --> B5
+        B --> B6
+        B --> B7
+    end
+    
+    subgraph Auth["Authentication"]
+        C[require_author]
+        C1[JWT Validation]
+        C2[User ID Extraction]
+        
+        C --> C1
+        C --> C2
+    end
+    
+    subgraph Database["Database - MongoDB"]
+        D[(MongoDB)]
+        D1[submissions collection]
+        D2[agent_tasks collection]
+        
+        D --> D1
+        D --> D2
+        
+        D1 --> D1a[Filter by user_id]
+        D1 --> D1b[Aggregation Pipelines]
+        D1 --> D1c[Status Queries]
+    end
+    
+    A1a --> B1
+    A1b --> B6
+    A1c --> B2
+    A2a --> B2
+    A2c --> B7
+    A3a --> B4
+    A3b --> B5
+    
+    B1 --> C
+    B2 --> C
+    B3 --> C
+    B4 --> C
+    B5 --> C
+    B6 --> C
+    B7 --> C
+    
+    C2 --> D1a
+    
+    B1 --> D1
+    B2 --> D1
+    B3 --> D1
+    B4 --> D1b
+    B5 --> D1b
+    B6 --> D1b
+    B7 --> D1
+    B7 --> D2
+    
+    style A fill:#61dafb,stroke:#333,stroke-width:2px
+    style B fill:#009688,stroke:#333,stroke-width:2px
+    style C fill:#ff9800,stroke:#333,stroke-width:2px
+    style D fill:#4caf50,stroke:#333,stroke-width:2px
