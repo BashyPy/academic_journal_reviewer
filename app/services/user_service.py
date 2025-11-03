@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.services.mongodb_service import mongodb_service
 from app.utils.logger import get_logger
+from app.utils.validators import validate_password, validate_username
 
 logger = get_logger(__name__)
 
@@ -21,6 +22,7 @@ class UserService:
             db = await mongodb_service.get_database()
             self.collection = db["users"]
             await self.collection.create_index("email", unique=True)
+            await self.collection.create_index("username", unique=True, sparse=True)
             await self.collection.create_index("api_key", unique=True)
 
     def hash_password(self, password: str) -> str:
@@ -47,14 +49,32 @@ class UserService:
         return f"aaris_{secrets.token_urlsafe(32)}"
 
     async def create_user(
-        self, email: str, password: str, name: str, role: str = "author"
+        self, email: str, password: str, name: str, role: str = "author", username: str = None
     ) -> dict:
         """Create new user"""
         await self.initialize()
 
+        # Validate password strength
+        is_valid, msg = validate_password(password)
+        if not is_valid:
+            raise ValueError(msg)
+        
+        # Validate username format
+        if username:
+            is_valid, msg = validate_username(username)
+            if not is_valid:
+                raise ValueError(msg)
+
+        # Check email uniqueness
         existing = await self.collection.find_one({"email": email})
         if existing:
             raise ValueError("Email already registered")
+        
+        # Check username uniqueness
+        if username:
+            existing_username = await self.collection.find_one({"username": username})
+            if existing_username:
+                raise ValueError("Username already taken")
 
         api_key = self.generate_api_key()
         user = {
@@ -68,6 +88,9 @@ class UserService:
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
+        
+        if username:
+            user["username"] = username
 
         result = await self.collection.insert_one(user)
         user["_id"] = str(result.inserted_id)
@@ -99,6 +122,12 @@ class UserService:
     async def update_password(self, email: str, new_password: str) -> bool:
         """Update user password"""
         await self.initialize()
+        
+        # Validate password strength
+        is_valid, msg = validate_password(new_password)
+        if not is_valid:
+            raise ValueError(msg)
+        
         result = await self.collection.update_one(
             {"email": email},
             {
@@ -126,9 +155,27 @@ class UserService:
         logger.info(f"User deleted: {email}")
         return result.deleted_count > 0
 
-    async def authenticate(self, email: str, password: str) -> Optional[dict]:
-        """Authenticate user"""
-        user = await self.get_user_by_email(email)
+    async def change_email(self, old_email: str, new_email: str) -> bool:
+        """Change user email"""
+        await self.initialize()
+        result = await self.collection.update_one(
+            {"email": old_email},
+            {"$set": {"email": new_email, "pending_email": None, "updated_at": datetime.now()}}
+        )
+        logger.info(f"Email changed: {old_email} -> {new_email}")
+        return result.modified_count > 0
+
+    async def get_user_by_username(self, username: str) -> Optional[dict]:
+        """Get user by username"""
+        await self.initialize()
+        return await self.collection.find_one({"username": username})
+
+    async def authenticate(self, email_or_username: str, password: str) -> Optional[dict]:
+        """Authenticate user by email or username"""
+        user = await self.get_user_by_email(email_or_username)
+        if not user:
+            user = await self.get_user_by_username(email_or_username)
+        
         if user and self.verify_password(password, user["password"]):
             if not user.get("active", True):
                 return None

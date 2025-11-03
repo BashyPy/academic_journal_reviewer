@@ -208,6 +208,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     submission_data = {
         "title": safe_filename,
         "content": document_content,
+        "original_file": content,  # Store original file for download
         "file_metadata": {
             **parsed_data.get("metadata", {}),
             "original_filename": safe_filename,
@@ -215,6 +216,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
         },
         "status": TaskStatus.PENDING.value,
         "created_at": datetime.now(timezone.utc),
+        "user_id": user.get("user_id"),  # Track submission owner
     }
 
     # Apply full rate limiting for new submissions

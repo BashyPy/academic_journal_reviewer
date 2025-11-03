@@ -382,7 +382,10 @@ Provide comprehensive ethical assessment with recommendations.
                 "recursion_limit": 50,  # Increase from default 25 to 50
             }
             final_state = await self.workflow.ainvoke(initial_state, config)
-            return final_state.get("final_report", "Review completed with errors")
+            return {
+                "final_report": final_state.get("final_report", "Review completed with errors"),
+                "domain": final_state.get("domain", "general")
+            }
         except Exception as e:
             self.logger.error(
                 e,

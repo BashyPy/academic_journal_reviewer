@@ -75,7 +75,10 @@ class WAF:
         return True, "OK"
 
     def _check_headers(self, headers) -> tuple[bool, str]:
+        safe_headers = {"accept", "accept-encoding", "accept-language", "content-type", "user-agent", "host", "connection"}
         for key, value in headers.items():
+            if key.lower() in safe_headers:
+                continue
             if self.check_patterns(value, self.sql_regex):
                 return False, f"SQL injection detected in header: {key}"
             if self.check_patterns(value, self.xss_regex):

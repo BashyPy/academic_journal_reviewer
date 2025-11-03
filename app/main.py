@@ -7,10 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.admin_routes import router as admin_router
+from app.api.admin_dashboard_routes import router as admin_dashboard_router
 from app.api.admin_user_routes import router as admin_user_router
 from app.api.auth_routes import router as auth_router
+from app.api.author_dashboard_routes import router as author_dashboard_router
+from app.api.editor_dashboard_routes import router as editor_dashboard_router
+from app.api.reviewer_dashboard_routes import router as reviewer_dashboard_router
 from app.api.cache_routes import router as cache_router
 from app.api.roles_routes import router as roles_router
+from app.api.super_admin_routes import router as super_admin_router
+from app.api.download_routes import router as download_router
 from app.api.routes import router
 from app.middleware.rate_limiter import rate_limit_middleware
 from app.middleware.waf import waf_middleware
@@ -30,6 +36,13 @@ app = FastAPI(
 
 # Rate limiting storage
 rate_limit_storage = defaultdict(list)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize default admin on startup"""
+    from app.services.init_admin import create_default_admin
+    await create_default_admin()
 
 
 # Apply security middleware in order: WAF -> Rate Limiting
@@ -165,12 +178,21 @@ app.add_middleware(
     max_age=600,  # Cache preflight for 10 minutes
 )
 
-app.include_router(router, prefix="/api/v1")
+# Define API prefix constant to avoid duplicated literals
+API_V1_PREFIX = "/api/v1"
+
+app.include_router(router, prefix=API_V1_PREFIX)
 app.include_router(cache_router)
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(roles_router, prefix="/api/v1")
-app.include_router(admin_router, prefix="/api/v1")
-app.include_router(admin_user_router, prefix="/api/v1")
+app.include_router(auth_router, prefix=API_V1_PREFIX)
+app.include_router(roles_router, prefix=API_V1_PREFIX)
+app.include_router(admin_router, prefix=API_V1_PREFIX)
+app.include_router(admin_dashboard_router, prefix=API_V1_PREFIX)
+app.include_router(admin_user_router, prefix=API_V1_PREFIX)
+app.include_router(author_dashboard_router, prefix=API_V1_PREFIX)
+app.include_router(editor_dashboard_router, prefix=API_V1_PREFIX)
+app.include_router(reviewer_dashboard_router, prefix=API_V1_PREFIX)
+app.include_router(super_admin_router, prefix=API_V1_PREFIX)
+app.include_router(download_router, prefix=API_V1_PREFIX)
 
 
 @app.get("/")

@@ -37,7 +37,15 @@ class OrchestratorAgent:
             )
 
             # Use LangGraph workflow for processing
-            final_report = await langgraph_workflow.execute_review(submission)
+            workflow_result = await langgraph_workflow.execute_review(submission)
+            
+            # Extract final report and detected domain
+            if isinstance(workflow_result, dict):
+                final_report = workflow_result.get("final_report", workflow_result.get("report", ""))
+                detected_domain = workflow_result.get("domain", "general")
+            else:
+                final_report = workflow_result
+                detected_domain = "general"
 
             # Resolve timezone from provided string, fallback to UTC on error
             try:
@@ -50,6 +58,7 @@ class OrchestratorAgent:
                 submission_id,
                 {
                     "final_report": final_report,
+                    "detected_domain": detected_domain,
                     "status": TaskStatus.COMPLETED.value,
                     "completed_at": completed_at,
                 },

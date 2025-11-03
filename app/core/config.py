@@ -28,6 +28,7 @@ class Settings:
         self.ANTHROPIC_API_KEY = self._validate_api_key(os.getenv("ANTHROPIC_API_KEY"))
 
         self.APP_ID = self._validate_app_id(os.getenv("APP_ID", "aaris-app"))
+        self.JWT_SECRET = os.getenv("JWT_SECRET", "change-this-secret-in-production-use-strong-random-key")
 
     def _validate_mongodb_url(self, url: Optional[str]) -> str:
         """Validate MongoDB URL format with defensive error handling"""
@@ -132,6 +133,12 @@ class Settings:
                 "Unexpected error validating APP_ID, falling back to 'aaris-app'."
             )
             return "aaris-app"
+    
+    def get_jwt_secret(self) -> str:
+        """Get JWT secret with warning if using default"""
+        if self.JWT_SECRET == "change-this-secret-in-production-use-strong-random-key":
+            logger.warning("Using default JWT_SECRET. Set JWT_SECRET in .env for production!")
+        return self.JWT_SECRET
 
 
 settings = Settings()

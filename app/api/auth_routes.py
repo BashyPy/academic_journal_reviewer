@@ -7,6 +7,8 @@ from app.models.auth_schemas import (
     AuthResponse,
     ForgotPasswordRequest,
     LoginRequest,
+    PasskeyAuthenticationRequest,
+    PasskeyRegistrationRequest,
     RegisterRequest,
     ResetPasswordRequest,
     UpdatePasswordRequest,
@@ -20,7 +22,10 @@ from app.models.profile_schemas import (
 from app.services.audit_logger import audit_logger
 from app.services.email_service import email_service
 from app.services.otp_service import otp_service
+from app.services.totp_service import totp_service
 from app.services.user_service import user_service
+from app.services.mongodb_service import mongodb_service
+from app.services.webauthn_service import webauthn_service
 from app.utils.logger import get_logger
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -35,11 +40,13 @@ async def register(request: RegisterRequest):
     """Register new user account"""
     try:
         user = await user_service.create_user(
-            email=request.email, password=request.password, name=request.name
+            email=request.email, password=request.password, name=request.name, username=request.username
         )
 
         otp = await otp_service.create_otp(request.email, "email_verification")
-        email_service.send_otp(request.email, otp, "email verification")
+        # TODO: Uncomment when email is configured
+        # email_service.send_otp(request.email, otp, "email verification")
+        logger.info(f"OTP for {request.email}: {otp}")  # Temporary: Log OTP for testing
 
         await audit_logger.log_event(
             event_type="user_registered",
@@ -68,7 +75,8 @@ async def verify_email(request: VerifyEmailRequest):
     if not await user_service.verify_email(request.email):
         raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
 
-    email_service.send_welcome(request.email, request.email)
+    # TODO: Uncomment when email is configured
+    # email_service.send_welcome(request.email, request.email)
 
     await audit_logger.log_event(event_type="email_verified", user_id=request.email)
 
@@ -77,19 +85,25 @@ async def verify_email(request: VerifyEmailRequest):
 
 @router.post("/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
-    """Login user"""
-    user = await user_service.authenticate(request.email, request.password)
+    """Login user with email or username"""
+    from app.middleware.jwt_auth import create_access_token
+    
+    user = await user_service.authenticate(request.email_or_username, request.password)
     if not user:
-        await audit_logger.log_auth_attempt(False, "unknown", request.email)
+        await audit_logger.log_auth_attempt(False, "unknown", request.email_or_username)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.get("email_verified", False):
         raise HTTPException(status_code=403, detail="Email not verified")
 
-    await audit_logger.log_auth_attempt(True, "unknown", request.email)
+    await audit_logger.log_auth_attempt(True, "unknown", user["email"])
+    
+    # Generate JWT token
+    access_token = create_access_token(user)
 
     return AuthResponse(
         message="Login successful",
+        access_token=access_token,
         api_key=user["api_key"],
         user={"email": user["email"], "name": user["name"], "role": user["role"]},
     )
@@ -103,7 +117,9 @@ async def forgot_password(request: ForgotPasswordRequest):
         return AuthResponse(message=OTP_SENT_MESSAGE)
 
     otp = await otp_service.create_otp(request.email, "password_reset")
-    email_service.send_otp(request.email, otp, "password reset")
+    # TODO: Uncomment when email is configured
+    # email_service.send_otp(request.email, otp, "password reset")
+    logger.info(f"Password reset OTP for {request.email}: {otp}")  # Temporary: Log OTP
 
     await audit_logger.log_event(
         event_type="password_reset_requested", user_id=request.email
@@ -205,7 +221,9 @@ async def resend_verification(request: ForgotPasswordRequest):
         raise HTTPException(status_code=400, detail="Email already verified")
 
     otp = await otp_service.create_otp(request.email, "email_verification")
-    email_service.send_otp(request.email, otp, "email verification")
+    # TODO: Uncomment when email is configured
+    # email_service.send_otp(request.email, otp, "email verification")
+    logger.info(f"Resend OTP for {request.email}: {otp}")  # Temporary: Log OTP
 
     return AuthResponse(message="Verification OTP sent")
 
@@ -240,3 +258,161 @@ async def get_profile_stats(user: dict = Depends(get_api_key)):
         pending_reviews=pending,
         account_age_days=age_days,
     )
+
+
+@router.post("/2fa/enable")
+async def enable_2fa(user: dict = Depends(get_api_key)):
+    """Enable 2FA for user"""
+    secret = totp_service.generate_secret()
+    uri = totp_service.get_totp_uri(user["email"], secret)
+    qr_code = totp_service.generate_qr_code(uri)
+    
+    await user_service.update_profile(user["email"], {"totp_secret": secret, "totp_enabled": False})
+    
+    return {"secret": secret, "qr_code": qr_code, "message": "Scan QR code and verify"}
+
+
+@router.post("/2fa/verify")
+async def verify_2fa(code: str, user: dict = Depends(get_api_key)):
+    """Verify and activate 2FA"""
+    user_data = await user_service.get_user_by_email(user["email"])
+    secret = user_data.get("totp_secret")
+    
+    if not secret:
+        raise HTTPException(status_code=400, detail="2FA not initialized")
+    
+    if not totp_service.verify_code(secret, code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    
+    await user_service.update_profile(user["email"], {"totp_enabled": True})
+    await audit_logger.log_event(event_type="2fa_enabled", user_id=user["email"])
+    
+    return AuthResponse(message="2FA enabled successfully")
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(code: str, user: dict = Depends(get_api_key)):
+    """Disable 2FA"""
+    user_data = await user_service.get_user_by_email(user["email"])
+    secret = user_data.get("totp_secret")
+    
+    if not secret or not user_data.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="2FA not enabled")
+    
+    if not totp_service.verify_code(secret, code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    
+    await user_service.update_profile(user["email"], {"totp_enabled": False, "totp_secret": None})
+    await audit_logger.log_event(event_type="2fa_disabled", user_id=user["email"])
+    
+    return AuthResponse(message="2FA disabled successfully")
+
+
+@router.post("/request-email-change")
+async def request_email_change(new_email: str, user: dict = Depends(get_api_key)):
+    """Request email change with OTP"""
+    existing = await user_service.get_user_by_email(new_email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already in use")
+    
+    otp = await otp_service.create_otp(new_email, "email_change")
+    logger.info(f"Email change OTP for {new_email}: {otp}")
+    
+    await user_service.update_profile(user["email"], {"pending_email": new_email})
+    
+    return AuthResponse(message="OTP sent to new email")
+
+
+@router.post("/verify-email-change")
+async def verify_email_change(otp: str, user: dict = Depends(get_api_key)):
+    """Verify and complete email change"""
+    user_data = await user_service.get_user_by_email(user["email"])
+    new_email = user_data.get("pending_email")
+    
+    if not new_email:
+        raise HTTPException(status_code=400, detail="No pending email change")
+    
+    if not await otp_service.verify_otp(new_email, otp, "email_change"):
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    
+    await user_service.change_email(user["email"], new_email)
+    await audit_logger.log_event(
+        event_type="email_changed",
+        user_id=user["email"],
+        details={"new_email": new_email}
+    )
+    
+    return AuthResponse(message="Email changed successfully")
+
+
+@router.post("/passkey/register-options")
+async def passkey_register_options(user: dict = Depends(get_api_key)):
+    """Get WebAuthn registration options for passkey"""
+    options = await webauthn_service.generate_registration_options(
+        user["email"], str(user["_id"])
+    )
+    return options
+
+
+@router.post("/passkey/register")
+async def passkey_register(request: PasskeyRegistrationRequest, user: dict = Depends(get_api_key)):
+    """Complete passkey registration"""
+    success = await webauthn_service.verify_registration(user["email"], request.credential)
+    if not success:
+        raise HTTPException(status_code=400, detail="Passkey registration failed")
+    
+    await audit_logger.log_event(event_type="passkey_registered", user_id=user["email"])
+    return AuthResponse(message="Passkey registered successfully")
+
+
+@router.post("/passkey/auth-options")
+async def passkey_auth_options():
+    """Get WebAuthn authentication options for passkey login"""
+    options = await webauthn_service.generate_authentication_options()
+    return options
+
+
+@router.post("/passkey/authenticate")
+async def passkey_authenticate(request: PasskeyAuthenticationRequest):
+    """Authenticate with passkey (biometric)"""
+    from app.middleware.jwt_auth import create_access_token
+    
+    user_email = await webauthn_service.verify_authentication(request.credential)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Passkey authentication failed")
+    
+    user = await user_service.get_user_by_email(user_email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await audit_logger.log_auth_attempt(True, "unknown", user["email"])
+    access_token = create_access_token(user)
+    
+    return AuthResponse(
+        message="Passkey authentication successful",
+        access_token=access_token,
+        api_key=user["api_key"],
+        user={"email": user["email"], "name": user["name"], "role": user["role"]}
+    )
+
+
+@router.get("/passkey/list")
+async def list_passkeys(user: dict = Depends(get_api_key)):
+    """List all registered passkeys"""
+    passkeys = await webauthn_service.list_passkeys(user["email"])
+    return {"passkeys": passkeys}
+
+
+@router.delete("/passkey/{credential_id}")
+async def delete_passkey(credential_id: str, user: dict = Depends(get_api_key)):
+    """Delete a passkey"""
+    success = await webauthn_service.delete_passkey(user["email"], credential_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Passkey not found")
+    
+    await audit_logger.log_event(
+        event_type="passkey_deleted",
+        user_id=user["email"],
+        details={"credential_id": credential_id}
+    )
+    return AuthResponse(message="Passkey deleted successfully")

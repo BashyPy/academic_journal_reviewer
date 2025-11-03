@@ -19,7 +19,7 @@ class SecurityMonitor:
 
     def record_failed_auth(self, ip_address: str):
         """Record failed authentication attempt"""
-        now = datetime.utcnow()
+        now = datetime.now()
         self.failed_auth_attempts[ip_address].append(now)
 
         # Clean old attempts (older than 1 hour)

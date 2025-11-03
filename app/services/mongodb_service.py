@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from bson import ObjectId
@@ -27,6 +28,10 @@ class MongoDBService:
     async def get_database(self):
         """Get database instance"""
         return self.db
+
+    def get_current_time(self) -> datetime:
+        """Get current UTC time"""
+        return datetime.now(timezone.utc)
 
     async def save_submission(self, submission_data: Dict[str, Any]) -> str:
         try:
