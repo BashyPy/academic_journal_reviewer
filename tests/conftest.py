@@ -1,6 +1,7 @@
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -60,3 +61,60 @@ def sample_docx_content():
         zf.writestr("word/document.xml", "<document/>")
         zf.writestr("[Content_Types].xml", "<Types/>")
     return buffer.getvalue()
+
+
+@pytest.fixture
+def mock_user():
+    """Mock authenticated user for testing"""
+    return {
+        "email": "test@example.com",
+        "name": "Test User",
+        "role": "user",
+        "api_key": "test_api_key",
+        "active": True,
+        "email_verified": True
+    }
+
+
+@pytest.fixture
+def auth_headers():
+    """Authentication headers for testing"""
+    return {"X-API-Key": "test_api_key"}
+
+
+@pytest.fixture
+def authenticated_client(client, mock_user):
+    """Client with authentication mocked"""
+    with patch('app.middleware.auth.get_api_key', return_value=mock_user):
+        yield client
+
+
+@pytest_asyncio.fixture
+async def mock_llm_response():
+    """Mock LLM response for testing"""
+    return Mock(
+        text="{\"score\": 8.5, \"findings\": [], \"recommendations\": [\"Test recommendation\"], \"confidence\": 0.9, \"bias_check\": \"Objective\"}",
+        choices=[Mock(message=Mock(content="Test LLM response"))]
+    )
+
+
+@pytest_asyncio.fixture
+async def mock_genai_model():
+    """Mock Google Generative AI model"""
+    mock = Mock()
+    mock.generate_content_async = AsyncMock(return_value=Mock(
+        text="{\"score\": 8.5, \"findings\": [], \"recommendations\": [\"Test\"], \"confidence\": 0.9, \"bias_check\": \"OK\"}"
+    ))
+    return mock
+
+
+@pytest_asyncio.fixture
+async def mock_langchain_service():
+    """Mock LangChain service"""
+    mock = Mock()
+    mock.domain_aware_review = AsyncMock(return_value="Domain review complete")
+    mock.chain_of_thought_analysis = AsyncMock(return_value="Chain analysis complete")
+    mock.multi_model_consensus = AsyncMock(return_value="Consensus reached")
+    mock.create_document_embeddings = AsyncMock()
+    mock.embeddings = True
+    return mock

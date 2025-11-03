@@ -1,168 +1,170 @@
+"""Complete agent system tests with proper mocking"""
+import pytest
 from unittest.mock import AsyncMock, Mock, patch
+from app.agents.base_agent import BaseAgent
+from app.agents.specialist_agents import MethodologyAgent, LiteratureAgent, ClarityAgent, EthicsAgent
+from app.agents.orchestrator import orchestrator
+from app.models.schemas import AgentCritique, DetailedFinding, TextHighlight
 
 
-class TestBaseAgent:
-    def test_base_agent_initialization(self):
-        from app.agents.base_agent import BaseAgent
-
-        agent = BaseAgent("test_agent")
-        assert agent.agent_type == "test_agent"
-        assert hasattr(agent, "process")
-
-    @patch("app.agents.base_agent.llm_service")
-    def test_base_agent_process(self, mock_llm):
-        from app.agents.base_agent import BaseAgent
-
-        mock_llm.call_llm.return_value = "test response"
-        agent = BaseAgent("test_agent")
-
-        result = agent.process("test content", "test domain")
-        assert "critique" in result
-        assert "agent_type" in result
-
-
-class TestSpecialistAgents:
-    @patch("app.agents.specialist_agents.llm_service")
-    def test_methodology_agent(self, mock_llm):
-        from app.agents.specialist_agents import MethodologyAgent
-
-        mock_llm.call_llm.return_value = (
-            "Methodology analysis: The study design is appropriate"
-        )
+@pytest.mark.asyncio
+async def test_base_agent_execute_task(mock_genai_model):
+    """Test base agent task execution"""
+    with patch('app.agents.base_agent.genai.GenerativeModel', return_value=mock_genai_model):
         agent = MethodologyAgent()
-
-        result = agent.process("test manuscript content", "medical")
-        assert result["agent_type"] == "methodology"
-        assert "critique" in result
-
-    @patch("app.agents.specialist_agents.llm_service")
-    def test_literature_agent(self, mock_llm):
-        from app.agents.specialist_agents import LiteratureAgent
-
-        mock_llm.call_llm.return_value = "Literature review: Citations are adequate"
-        agent = LiteratureAgent()
-
-        result = agent.process("test manuscript content", "computer_science")
-        assert result["agent_type"] == "literature"
-
-    @patch("app.agents.specialist_agents.llm_service")
-    def test_clarity_agent(self, mock_llm):
-        from app.agents.specialist_agents import ClarityAgent
-
-        mock_llm.call_llm.return_value = (
-            "Clarity analysis: Writing is clear and concise"
-        )
-        agent = ClarityAgent()
-
-        result = agent.process("test manuscript content", "psychology")
-        assert result["agent_type"] == "clarity"
-
-    @patch("app.agents.specialist_agents.llm_service")
-    def test_ethics_agent(self, mock_llm):
-        from app.agents.specialist_agents import EthicsAgent
-
-        mock_llm.call_llm.return_value = "Ethics review: No ethical concerns identified"
-        agent = EthicsAgent()
-
-        result = agent.process("test manuscript content", "medical")
-        assert result["agent_type"] == "ethics"
+        context = {
+            "submission_id": "test123",
+            "content": "This is a test manuscript with methodology section."
+        }
+        result = await agent.execute_task(context)
+        assert isinstance(result, AgentCritique)
+        assert result.agent_type == "methodology"
 
 
-class TestOrchestrator:
-    @patch("app.agents.orchestrator.mongodb_service")
-    @patch("app.agents.orchestrator.domain_detector")
-    def test_orchestrator_initialization(self, mock_detector, mock_db):
-        from app.agents.orchestrator import Orchestrator
+@pytest.mark.asyncio
+async def test_methodology_agent_system_prompt():
+    """Test methodology agent prompt generation"""
+    agent = MethodologyAgent()
+    prompt = agent.get_system_prompt()
+    assert "Methodology" in prompt
+    assert "Statistical methods" in prompt
 
-        orchestrator = Orchestrator()
-        assert hasattr(orchestrator, "process_submission")
-        assert hasattr(orchestrator, "specialist_agents")
 
-    @patch("app.agents.orchestrator.mongodb_service")
-    @patch("app.agents.orchestrator.domain_detector")
-    @patch("app.agents.orchestrator.SynthesisAgent")
-    def test_process_submission_success(self, mock_synthesis, mock_detector, mock_db):
-        from app.agents.orchestrator import Orchestrator
+@pytest.mark.asyncio
+async def test_literature_agent_system_prompt():
+    """Test literature agent prompt generation"""
+    agent = LiteratureAgent()
+    prompt = agent.get_system_prompt()
+    assert "Literature" in prompt
+    assert "Citation" in prompt
 
-        mock_db.get_submission = AsyncMock(
-            return_value={"content": "test content", "status": "pending"}
-        )
-        mock_db.update_submission_status = AsyncMock()
-        mock_db.save_agent_task = AsyncMock()
-        mock_detector.detect_domain.return_value = "medical"
 
-        mock_synthesis_instance = Mock()
-        mock_synthesis_instance.synthesize_reviews = AsyncMock(
-            return_value="final report"
-        )
-        mock_synthesis.return_value = mock_synthesis_instance
+@pytest.mark.asyncio
+async def test_clarity_agent_system_prompt():
+    """Test clarity agent prompt generation"""
+    agent = ClarityAgent()
+    prompt = agent.get_system_prompt()
+    assert "Clarity" in prompt
+    assert "Presentation" in prompt
 
-        orchestrator = Orchestrator()
 
-        # Test would require async context
-        assert hasattr(orchestrator, "process_submission")
+@pytest.mark.asyncio
+async def test_ethics_agent_system_prompt():
+    """Test ethics agent prompt generation"""
+    agent = EthicsAgent()
+    prompt = agent.get_system_prompt()
+    assert "Ethics" in prompt
+    assert "Integrity" in prompt
 
-    @patch("app.agents.orchestrator.mongodb_service")
-    def test_process_submission_not_found(self, mock_db):
-        from app.agents.orchestrator import Orchestrator
 
+@pytest.mark.asyncio
+async def test_agent_parse_response():
+    """Test agent response parsing"""
+    agent = MethodologyAgent()
+    response = """{
+        "score": 8.5,
+        "findings": [
+            {
+                "finding": "Test finding",
+                "highlights": [{"text": "test", "start_pos": 0, "end_pos": 4, "context": "ctx", "issue_type": "minor"}],
+                "severity": "minor",
+                "category": "methodology"
+            }
+        ],
+        "recommendations": ["Test rec"],
+        "confidence": 0.9,
+        "bias_check": "OK"
+    }"""
+    critique = agent.parse_response(response)
+    assert isinstance(critique, AgentCritique)
+    assert len(critique.findings) == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_build_prompt():
+    """Test agent prompt building"""
+    agent = MethodologyAgent()
+    context = {
+        "content": "Test manuscript content",
+        "sections": {"introduction": {"word_count": 100, "content": [(1, "intro")]}}
+    }
+    prompt = agent.build_prompt(context)
+    assert "Test manuscript content" in prompt
+    assert "JSON RESPONSE FORMAT" in prompt
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_process_submission():
+    """Test orchestrator submission processing"""
+    with patch('app.agents.orchestrator.mongodb_service') as mock_db, \
+         patch('app.agents.orchestrator.langgraph_workflow') as mock_workflow, \
+         patch('app.agents.orchestrator.rate_limiter') as mock_limiter, \
+         patch('app.agents.orchestrator.document_cache_service') as mock_cache:
+        
+        mock_db.get_submission = AsyncMock(return_value={
+            "_id": "test123",
+            "title": "test.pdf",
+            "content": "test content"
+        })
+        mock_db.update_submission = AsyncMock()
+        mock_workflow.execute_review = AsyncMock(return_value="Final report")
+        mock_limiter.check_concurrent_processing = Mock()
+        mock_limiter.release_processing = Mock()
+        mock_cache.cache_submission = AsyncMock()
+        
+        result = await orchestrator.process_submission("test123")
+        assert result["status"] == "completed"
+        assert result["submission_id"] == "test123"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_handles_errors():
+    """Test orchestrator error handling"""
+    with patch('app.agents.orchestrator.mongodb_service') as mock_db, \
+         patch('app.agents.orchestrator.rate_limiter') as mock_limiter:
+        
         mock_db.get_submission = AsyncMock(return_value=None)
-        Orchestrator()
+        mock_limiter.check_concurrent_processing = Mock()
+        mock_limiter.release_processing = Mock()
+        
+        with pytest.raises(ValueError):
+            await orchestrator.process_submission("invalid_id")
 
-        # Test would require async context and exception handling
-        assert isinstance(mock_db.get_submission, AsyncMock)
+
+@pytest.mark.asyncio
+async def test_agent_enhance_findings():
+    """Test finding enhancement with positions"""
+    agent = MethodologyAgent()
+    critique = AgentCritique(
+        agent_type="methodology",
+        score=8.0,
+        findings=[
+            DetailedFinding(
+                finding="Test",
+                highlights=[TextHighlight(text="test", start_pos=0, end_pos=0, context="", issue_type="minor")],
+                severity="minor",
+                category="methodology"
+            )
+        ],
+        recommendations=["Test"],
+        confidence=0.9,
+        bias_check="OK"
+    )
+    manuscript = "This is a test manuscript"
+    sections = {"introduction": {"word_count": 5, "content": [(1, "This is a test")]}}
+    
+    agent._enhance_findings_with_positions(critique, manuscript, sections)
+    assert len(critique.findings) > 0
 
 
-class TestSynthesisAgent:
-    @patch("app.agents.synthesis_agent.llm_service")
-    @patch("app.agents.synthesis_agent.issue_deduplicator")
-    def test_synthesis_agent_initialization(self, mock_dedup, mock_llm):
-        from app.agents.synthesis_agent import SynthesisAgent
-
-        agent = SynthesisAgent()
-        assert hasattr(agent, "synthesize_reviews")
-
-    @patch("app.agents.synthesis_agent.llm_service")
-    @patch("app.agents.synthesis_agent.issue_deduplicator")
-    def test_synthesize_reviews_success(self, mock_dedup, mock_llm):
-        from app.agents.synthesis_agent import SynthesisAgent
-
-        mock_llm.call_llm.return_value = "# Final Review Report\n\nOverall Score: 8/10"
-        mock_dedup.deduplicate_issues.return_value = []
-
-        agent = SynthesisAgent()
-        _reviews = [
-            {"agent_type": "methodology", "critique": "Good methodology"},
-            {"agent_type": "literature", "critique": "Adequate literature review"},
-        ]
-
-        # Test would require async context
-        assert hasattr(agent, "synthesize_reviews")
-
-    def test_calculate_weighted_score(self):
-        from app.agents.synthesis_agent import SynthesisAgent
-
-        agent = SynthesisAgent()
-        reviews = [
-            {"agent_type": "methodology", "score": 8},
-            {"agent_type": "literature", "score": 7},
-            {"agent_type": "clarity", "score": 9},
-            {"agent_type": "ethics", "score": 8},
-        ]
-
-        score = agent._calculate_weighted_score(reviews, "medical")
-        assert isinstance(score, (int, float))
-        assert 0 <= score <= 10
-
-    def test_extract_issues_from_reviews(self):
-        from app.agents.synthesis_agent import SynthesisAgent
-
-        agent = SynthesisAgent()
-        reviews = [
-            {"critique": "Issue: Methodology unclear. Strength: Good data."},
-            {"critique": "Problem: Missing references. Positive: Clear writing."},
-        ]
-
-        issues = agent._extract_issues_from_reviews(reviews)
-        assert isinstance(issues, list)
-        assert len(issues) > 0
+@pytest.mark.asyncio
+async def test_agent_error_handling(mock_genai_model):
+    """Test agent handles LLM errors gracefully"""
+    mock_genai_model.generate_content_async = AsyncMock(side_effect=Exception("LLM error"))
+    
+    with patch('app.agents.base_agent.genai.GenerativeModel', return_value=mock_genai_model):
+        agent = MethodologyAgent()
+        context = {"submission_id": "test", "content": "test"}
+        
+        with pytest.raises(Exception):
+            await agent.execute_task(context)
