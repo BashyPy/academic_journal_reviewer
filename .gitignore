@@ -39,3 +39,7 @@ scripts
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+
+requirements-main.txt
+
+diagrams/README.md

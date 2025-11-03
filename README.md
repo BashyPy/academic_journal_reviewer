@@ -29,7 +29,16 @@ An advanced AI-powered system for comprehensive academic manuscript review using
 - **Issue Deduplication**: Eliminates redundant findings across analyses
 - **Guardrails System**: Ensures ethical and professional output
 - **PDF Generation**: Professional, formatted review reports
+- **File Downloads**: Role-based access to original manuscripts and review PDFs
 - **Multi-LLM Support**: OpenAI, Anthropic, Google Gemini, Groq
+- **Super Admin Dashboard**: Comprehensive system management and monitoring
+  - User management with role-based access control
+  - Real-time submission monitoring and reprocessing
+  - Security audit logging and IP tracking
+  - Performance metrics and analytics
+  - API key management
+- **Dual Authentication**: JWT tokens and API keys for flexible access
+- **Passkey Authentication**: Biometric login with fingerprint/Face ID support
 
 ### Supported Academic Domains
 
@@ -279,6 +288,24 @@ GET /api/v1/submissions/{submission_id}/report
 GET /api/v1/submissions/{submission_id}/download
 ```
 
+#### Download Original Manuscript
+
+```http
+GET /api/v1/downloads/manuscripts/{submission_id}
+Authorization: Bearer <token>
+```
+
+Download the original uploaded manuscript with role-based permissions
+
+#### Download Review PDF
+
+```http
+GET /api/v1/downloads/reviews/{submission_id}
+Authorization: Bearer <token>
+```
+
+Download the processed review report with role-based permissions
+
 #### System Disclaimer
 
 ```http
@@ -453,9 +480,214 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - Regularly validate AI recommendations
 - Maintain transparency about AI assistance
 
+## 🛡️ Dashboards
+
+AARIS includes **five dashboards** for different user roles:
+
+### Author Dashboard (Personal Tracking)
+
+**Access**: `http://localhost:3000/author-dashboard`  
+**Required Role**: Any authenticated user
+
+**Key Features**:
+- **Personal Statistics**: Track your own submission metrics
+- **My Submissions**: View and manage your manuscripts
+- **Analytics**: Timeline and domain distribution for your work
+- **Performance Metrics**: Average review processing times
+- **Download Reports**: Access completed review PDFs
+- **Delete Submissions**: Remove your own submissions
+
+**Three Main Tabs**:
+1. **Overview**: Quick stats, performance metrics, recent submissions
+2. **My Submissions**: Complete list with status filters and actions
+3. **Analytics**: 30-day timeline and domain distribution
+
+**Documentation**:
+- [Author Dashboard Guide](./docs/AUTHOR_DASHBOARD.md)
+- [Author Dashboard Quick Start](./docs/AUTHOR_DASHBOARD_QUICK_START.md)
+
+---
+
+### Editor Dashboard (Editorial Management)
+
+**Access**: `http://localhost:3000/editor-dashboard`  
+**Required Role**: `editor`, `admin`, or `super_admin`
+
+**Key Features**:
+- **View All Submissions**: Access manuscripts from all authors
+- **Editorial Decisions**: Accept, revise, or reject manuscripts
+- **Workflow Management**: Reprocess failed submissions
+- **Performance Metrics**: Review processing analytics
+- **Domain Analytics**: Submission distribution by field
+- **Recent Activity**: Monitor latest submission updates
+
+**Three Main Tabs**:
+1. **Overview**: System statistics, performance metrics, recent submissions
+2. **All Submissions**: Complete submission list with filtering and actions
+3. **Analytics**: 30-day trends, domain distribution, status breakdown
+
+**Editorial Actions**:
+- Make formal decisions (Accept/Revise/Reject)
+- Add editorial comments
+- Reprocess failed reviews
+- Download review reports
+- Track decision history
+
+**Documentation**:
+- [Editor Dashboard Guide](./docs/EDITOR_DASHBOARD.md)
+- [Editor Dashboard Quick Start](./docs/EDITOR_DASHBOARD_QUICK_START.md)
+
+---
+
+### Reviewer Dashboard (Peer Review Management)
+
+**Access**: `http://localhost:3000/reviewer-dashboard`  
+**Required Role**: `reviewer`, `editor`, `admin`, or `super_admin`
+
+**Key Features**:
+- **View Assigned Manuscripts**: Access manuscripts assigned for review
+- **Conduct Reviews**: Comprehensive review form with scoring system
+- **Track Review Status**: Monitor pending, in-progress, and completed reviews
+- **Performance Analytics**: Review timeline and domain distribution
+- **Review Workflow**: Start, continue, and submit reviews
+- **Quality Metrics**: Average review time and completion statistics
+
+**Three Main Tabs**:
+1. **Overview**: Statistics, recent assignments, performance metrics
+2. **My Assignments**: Complete list with status filters and actions
+3. **Analytics**: 30-day timeline, domain distribution, performance data
+
+**Review Features**:
+- Score manuscripts on multiple criteria (1-10 scale)
+- Provide strengths and weaknesses
+- Write detailed comments
+- Make recommendations (Accept/Revise/Major Revise/Reject)
+- Track review time automatically
+
+**Documentation**:
+- [Reviewer Dashboard Guide](./docs/REVIEWER_DASHBOARD.md)
+- [Reviewer Dashboard Quick Start](./docs/REVIEWER_DASHBOARD_QUICK_START.md)
+
+---
+
+AARIS also includes **two administrative dashboards** for different management roles:
+
+### 1. Admin Dashboard (Operational Management)
+
+**Access**: `http://localhost:3000/admin-dashboard`  
+**Required Role**: `admin` or `super_admin`
+
+**Key Features**:
+- View and manage users (limited)
+- Monitor submissions (read-only)
+- View audit logs (30 days)
+- Create API keys (limited roles)
+- View analytics and statistics
+
+**Limitations**:
+- Cannot view/modify super_admin accounts
+- Cannot create or delete users
+- Cannot change user roles
+- Cannot reprocess or delete submissions
+- Cannot perform system operations
+
+**Documentation**:
+- [Admin vs Super Admin Comparison](./docs/ADMIN_VS_SUPER_ADMIN.md)
+- [Admin Dashboard Quick Start](./docs/ADMIN_DASHBOARD_QUICK_START.md)
+
+### 2. Super Admin Dashboard (Full System Control)
+
+**Access**: `http://localhost:3000/super-admin`  
+**Required Role**: `super_admin`
+
+**Key Features**:
+- **User Management**: Create, edit, delete users with role assignment
+- **Submission Control**: Monitor, reprocess, and delete manuscript reviews
+- **Security Monitoring**: Audit logs (90 days), IP tracking, security statistics
+- **Analytics**: Submission trends, domain distribution, performance metrics
+- **API Key Management**: Create, view, and revoke all API keys
+- **System Operations**: Cache management, health monitoring, maintenance
+
+**Full Capabilities**:
+- Complete user lifecycle management
+- Full submission control
+- Extended audit log access
+- Performance monitoring
+- System maintenance tools
+
+**Documentation**:
+- [Super Admin Dashboard README](./docs/ADMIN_DASHBOARD_README.md)
+- [Super Admin Dashboard Guide](./docs/ADMIN_DASHBOARD_GUIDE.md)
+- [Super Admin Quick Reference](./docs/ADMIN_QUICK_REFERENCE.md)
+- [Implementation Details](./docs/ADMIN_DASHBOARD_IMPLEMENTATION.md)
+
+### Dashboard Comparison
+
+| Feature | Author | Reviewer | Editor | Admin | Super Admin |
+|---------|--------|----------|--------|-------|-------------|
+| **URL** | `/author-dashboard` | `/reviewer-dashboard` | `/editor-dashboard` | `/admin-dashboard` | `/super-admin` |
+| **Access** | All users | Reviewer+ | Editor+ | Admin+ | Super Admin only |
+| **Tabs** | 3 | 3 | 3 | 8 | 9 |
+| **Own Submissions** | Full control | View all | View all | View all | View all |
+| **All Submissions** | No | No | Yes | Yes | Yes |
+| **Assigned Reviews** | No | Yes | Yes | No | Yes |
+| **Conduct Reviews** | No | Yes | Yes | No | Yes |
+| **Editorial Decisions** | No | No | Yes | No | Yes |
+| **Reprocess Submissions** | No | No | Yes | No | Yes |
+| **User Management** | None | None | None | View & activate | Full control |
+| **Audit Logs** | None | None | None | 30 days | 90 days |
+| **API Keys** | None | None | None | Create (limited) | Full management |
+| **System Operations** | None | None | None | None | Full access |
+| **Performance Metrics** | Own only | Review metrics | All | None | Full access |
+
+### Choosing the Right Dashboard
+
+**Use Author Dashboard for**:
+- Tracking your own submissions
+- Downloading review reports
+- Analyzing your submission patterns
+- Managing your manuscripts
+
+**Use Reviewer Dashboard for**:
+- Viewing assigned manuscripts
+- Conducting peer reviews
+- Tracking review progress
+- Analyzing review performance
+- Managing review workload
+
+**Use Editor Dashboard for**:
+- Managing all manuscript submissions
+- Making editorial decisions
+- Monitoring review workflow
+- Reprocessing failed reviews
+- Analyzing submission trends
+
+**Use Admin Dashboard for**:
+- Day-to-day operations
+- User monitoring
+- Submission tracking
+- Routine API key creation
+
+**Use Super Admin Dashboard for**:
+- System administration
+- Critical operations
+- Performance monitoring
+- Security management
+- Data management
+
 ## 📞 Support
 
 - **Documentation**: Check API docs at `/docs`
+- **Dashboards**: 
+  - [Author Dashboard Guide](./docs/AUTHOR_DASHBOARD.md)
+  - [Author Quick Start](./docs/AUTHOR_DASHBOARD_QUICK_START.md)
+  - [Reviewer Dashboard Guide](./docs/REVIEWER_DASHBOARD.md)
+  - [Reviewer Quick Start](./docs/REVIEWER_DASHBOARD_QUICK_START.md)
+  - [Editor Dashboard Guide](./docs/EDITOR_DASHBOARD.md)
+  - [Editor Quick Start](./docs/EDITOR_DASHBOARD_QUICK_START.md)
+  - [Admin vs Super Admin](./docs/ADMIN_VS_SUPER_ADMIN.md)
+  - [Admin Quick Start](./docs/ADMIN_DASHBOARD_QUICK_START.md)
+  - [Super Admin README](./docs/ADMIN_DASHBOARD_README.md)
 - **Issues**: Report bugs via GitHub Issues
 - **Discussions**: Use GitHub Discussions for questions
 
