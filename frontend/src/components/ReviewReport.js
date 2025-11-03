@@ -47,11 +47,9 @@ const ReviewReport = ({ submissionId }) => {
 
   const downloadPDF = async () => {
     try {
-      const response = await rateLimiter.makeRequest(`download-${submissionId}`, () =>
-        axios.get(`/api/v1/submissions/${submissionId}/download`, {
-          responseType: 'blob'
-        })
-      );
+      const response = await axios.get(`/api/v1/submissions/${submissionId}/download`, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;

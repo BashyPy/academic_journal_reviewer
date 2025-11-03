@@ -10,7 +10,7 @@ class RateLimiter {
     
     const recentRequests = requestHistory.filter(time => now - time < 60000);
     
-    if (recentRequests.length >= 10) {
+    if (recentRequests.length >= 100) {
       const oldestRequest = Math.min(...recentRequests);
       const waitTime = 60000 - (now - oldestRequest);
       throw new Error(`Rate limit exceeded. Please wait ${Math.ceil(waitTime / 1000)} seconds.`);
