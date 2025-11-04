@@ -28,7 +28,15 @@ const Login = () => {
 
     try {
       await authService.login(emailOrUsername, password, rememberMe);
-      navigate('/');
+      const user = authService.getUser();
+      const roleRoutes = {
+        'super_admin': '/super-admin',
+        'admin': '/admin-dashboard',
+        'editor': '/editor-dashboard',
+        'reviewer': '/reviewer-dashboard',
+        'author': '/author-dashboard'
+      };
+      navigate(roleRoutes[user.role] || '/author-dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed');
     } finally {
@@ -48,7 +56,15 @@ const Login = () => {
         result.user,
         rememberMe
       );
-      navigate('/');
+      const user = authService.getUser();
+      const roleRoutes = {
+        'super_admin': '/super-admin',
+        'admin': '/admin-dashboard',
+        'editor': '/editor-dashboard',
+        'reviewer': '/reviewer-dashboard',
+        'author': '/author-dashboard'
+      };
+      navigate(roleRoutes[user.role] || '/author-dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Biometric login failed');
     } finally {

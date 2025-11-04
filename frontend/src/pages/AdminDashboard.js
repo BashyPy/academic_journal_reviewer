@@ -23,6 +23,12 @@ const AdminDashboard = () => {
     role: 'author',
     expires_days: 365
   });
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetPasswordData, setResetPasswordData] = useState({
+    identifier: '',
+    new_password: ''
+  });
+  const [showResetPasswordField, setShowResetPasswordField] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -91,6 +97,21 @@ const AdminDashboard = () => {
     }
   };
 
+  const resetPassword = async (e) => {
+    e.preventDefault();
+    if (!window.confirm(`Reset password for ${resetPasswordData.identifier}?`)) return;
+    
+    try {
+      await axios.post('/api/v1/admin/users/reset-password', resetPasswordData);
+      alert('Password reset successfully');
+      setShowResetPassword(false);
+      setResetPasswordData({ identifier: '', new_password: '' });
+      setShowResetPasswordField(false);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to reset password');
+    }
+  };
+
   const createApiKey = async (e) => {
     e.preventDefault();
     try {
@@ -131,6 +152,7 @@ const AdminDashboard = () => {
     if (activeTab === 'user-stats' && userStats.length === 0) {
       loadUserStats();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   if (loading && !stats) {
@@ -150,21 +172,54 @@ const AdminDashboard = () => {
         </div>
         <div className="header-actions">
           <span className="user-info">👤 {user?.name || user?.email}</span>
+          <button onClick={() => navigate('/')} className="refresh-btn">🏠 Home</button>
           <button onClick={loadDashboardData} className="refresh-btn">🔄 Refresh</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </header>
 
-      <nav className="dashboard-tabs">
-        <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>Users</button>
-        <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>Submissions</button>
-        <button className={activeTab === 'audit' ? 'active' : ''} onClick={() => setActiveTab('audit')}>Audit Logs</button>
-        <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
-        <button className={activeTab === 'api-keys' ? 'active' : ''} onClick={() => { setActiveTab('api-keys'); loadApiKeys(); }}>API Keys</button>
-        <button className={activeTab === 'activity' ? 'active' : ''} onClick={() => { setActiveTab('activity'); loadRecentActivity(); }}>Activity</button>
-        <button className={activeTab === 'user-stats' ? 'active' : ''} onClick={() => { setActiveTab('user-stats'); loadUserStats(); }}>User Stats</button>
-      </nav>
+      <div className="dashboard-layout">
+        <aside className="sidebar">
+          <nav className="sidebar-nav">
+            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>
+              <span className="icon">📊</span> Overview
+            </button>
+            <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>
+              <span className="icon">👥</span> Users
+            </button>
+            <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>
+              <span className="icon">📄</span> Submissions
+            </button>
+            <button className={activeTab === 'audit' ? 'active' : ''} onClick={() => setActiveTab('audit')}>
+              <span className="icon">📋</span> Audit Logs
+            </button>
+            <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>
+              <span className="icon">📈</span> Analytics
+            </button>
+            <button className={activeTab === 'api-keys' ? 'active' : ''} onClick={() => { setActiveTab('api-keys'); loadApiKeys(); }}>
+              <span className="icon">🔑</span> API Keys
+            </button>
+            <button className={activeTab === 'activity' ? 'active' : ''} onClick={() => { setActiveTab('activity'); loadRecentActivity(); }}>
+              <span className="icon">🔔</span> Activity
+            </button>
+            <button className={activeTab === 'user-stats' ? 'active' : ''} onClick={() => { setActiveTab('user-stats'); loadUserStats(); }}>
+              <span className="icon">📊</span> User Stats
+            </button>
+          </nav>
+        </aside>
+
+        <main className="dashboard-content">
+
+      {activeTab === 'upload' && (
+        <div className="upload-section">
+          <h2>Upload Manuscript</h2>
+          <iframe 
+            src="/" 
+            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
+            title="Upload Manuscript"
+          />
+        </div>
+      )}
 
       {activeTab === 'overview' && stats && (
         <div className="overview-section">
@@ -207,8 +262,64 @@ const AdminDashboard = () => {
 
       {activeTab === 'users' && (
         <div className="users-section">
-          <h2>User Management</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2>User Management</h2>
+            <button onClick={() => setShowResetPassword(!showResetPassword)} className="create-key-btn">
+              {showResetPassword ? '❌ Cancel' : '🔑 Reset Password'}
+            </button>
+          </div>
           <p className="info-note">ℹ️ Note: Admins cannot view or modify Super Admin accounts</p>
+
+          {showResetPassword && (
+            <div className="create-key-form">
+              <h3>Reset User Password</h3>
+              <form onSubmit={resetPassword}>
+                <div className="form-group">
+                  <label>Email or Username *</label>
+                  <input
+                    type="text"
+                    value={resetPasswordData.identifier}
+                    onChange={(e) => setResetPasswordData({...resetPasswordData, identifier: e.target.value})}
+                    required
+                    placeholder="email@example.com or username"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>New Password *</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showResetPasswordField ? "text" : "password"}
+                      value={resetPasswordData.new_password}
+                      onChange={(e) => setResetPasswordData({...resetPasswordData, new_password: e.target.value})}
+                      required
+                      minLength="8"
+                      placeholder="Min 8 characters"
+                      style={{ paddingRight: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPasswordField(!showResetPasswordField)}
+                      className="password-toggle"
+                      title={showResetPasswordField ? "Hide password" : "Show password"}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '18px'
+                      }}
+                    >
+                      {showResetPasswordField ? '👁️' : '👁️🗨️'}
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" className="submit-btn">Reset Password</button>
+              </form>
+            </div>
+          )}
           <table className="data-table">
             <thead>
               <tr>
@@ -235,6 +346,16 @@ const AdminDashboard = () => {
                   <td>
                     <button onClick={() => toggleUserStatus(user._id, user.is_active)} className="action-btn">
                       {user.is_active ? '🚫 Deactivate' : '✅ Activate'}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setResetPasswordData({ identifier: user.email, new_password: '' });
+                        setShowResetPassword(true);
+                      }} 
+                      className="action-btn"
+                      title="Reset password"
+                    >
+                      🔑 Reset
                     </button>
                   </td>
                 </tr>
@@ -483,6 +604,8 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
+        </main>
+      </div>
     </div>
   );
 };

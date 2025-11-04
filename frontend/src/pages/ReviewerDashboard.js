@@ -132,6 +132,7 @@ const ReviewerDashboard = () => {
         </div>
         <div className="user-info">
           <span>👤 {user?.name || user?.email}</span>
+          <button onClick={() => navigate('/')} className="btn-home">🏠 Home</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </header>
@@ -142,6 +143,12 @@ const ReviewerDashboard = () => {
           onClick={() => setActiveTab('overview')}
         >
           Overview
+        </button>
+        <button
+          className={activeTab === 'upload' ? 'active' : ''}
+          onClick={() => setActiveTab('upload')}
+        >
+          📤 Upload
         </button>
         <button
           className={activeTab === 'assignments' ? 'active' : ''}
@@ -158,6 +165,16 @@ const ReviewerDashboard = () => {
       </nav>
 
       <div className="dashboard-content">
+        {activeTab === 'upload' && (
+          <div className="upload-tab">
+            <iframe 
+              src="/" 
+              style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
+              title="Upload Manuscript"
+            />
+          </div>
+        )}
+
         {activeTab === 'overview' && (
           <div className="overview-tab">
             <div className="stats-grid">

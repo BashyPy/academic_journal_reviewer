@@ -16,6 +16,7 @@ const SuperAdminDashboard = () => {
   const [performance, setPerformance] = useState(null);
   const [userActivity, setUserActivity] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [submissionId, setSubmissionId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -26,6 +27,12 @@ const SuperAdminDashboard = () => {
     role: 'author',
     username: ''
   });
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetPasswordData, setResetPasswordData] = useState({
+    user_id: '',
+    new_password: ''
+  });
+  const [showResetPasswordField, setShowResetPasswordField] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -186,6 +193,21 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  const resetPassword = async (e) => {
+    e.preventDefault();
+    if (!window.confirm('Reset password for this user?')) return;
+    
+    try {
+      await axios.post('/api/v1/super-admin/users/reset-password', resetPasswordData);
+      alert('Password reset successfully');
+      setShowResetPassword(false);
+      setResetPasswordData({ user_id: '', new_password: '' });
+      setShowResetPasswordField(false);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to reset password');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'api-keys' && apiKeys.length === 0) {
       loadApiKeys();
@@ -215,22 +237,60 @@ const SuperAdminDashboard = () => {
         </div>
         <div className="header-actions">
           <span className="user-info">👤 {user?.name || user?.email}</span>
+          <button onClick={() => navigate('/')} className="refresh-btn">🏠 Home</button>
           <button onClick={loadDashboardData} className="refresh-btn">🔄 Refresh</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </header>
 
-      <nav className="dashboard-tabs">
-        <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>Users</button>
-        <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>Submissions</button>
-        <button className={activeTab === 'audit' ? 'active' : ''} onClick={() => setActiveTab('audit')}>Audit Logs</button>
-        <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
-        <button className={activeTab === 'api-keys' ? 'active' : ''} onClick={() => { setActiveTab('api-keys'); loadApiKeys(); }}>API Keys</button>
-        <button className={activeTab === 'performance' ? 'active' : ''} onClick={() => { setActiveTab('performance'); loadPerformance(); }}>Performance</button>
-        <button className={activeTab === 'activity' ? 'active' : ''} onClick={() => { setActiveTab('activity'); loadUserActivity(); }}>Activity</button>
-        <button className={activeTab === 'system' ? 'active' : ''} onClick={() => setActiveTab('system')}>System</button>
-      </nav>
+      <div className="dashboard-layout">
+        <aside className="sidebar">
+          <nav className="sidebar-nav">
+            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>
+              <span className="icon">📊</span> Overview
+            </button>
+            <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>
+              <span className="icon">📤</span> Upload Manuscript
+            </button>
+            <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>
+              <span className="icon">👥</span> Users
+            </button>
+            <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>
+              <span className="icon">📄</span> Submissions
+            </button>
+            <button className={activeTab === 'audit' ? 'active' : ''} onClick={() => setActiveTab('audit')}>
+              <span className="icon">📋</span> Audit Logs
+            </button>
+            <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>
+              <span className="icon">📈</span> Analytics
+            </button>
+            <button className={activeTab === 'api-keys' ? 'active' : ''} onClick={() => { setActiveTab('api-keys'); loadApiKeys(); }}>
+              <span className="icon">🔑</span> API Keys
+            </button>
+            <button className={activeTab === 'performance' ? 'active' : ''} onClick={() => { setActiveTab('performance'); loadPerformance(); }}>
+              <span className="icon">⚡</span> Performance
+            </button>
+            <button className={activeTab === 'activity' ? 'active' : ''} onClick={() => { setActiveTab('activity'); loadUserActivity(); }}>
+              <span className="icon">🔔</span> Activity
+            </button>
+            <button className={activeTab === 'system' ? 'active' : ''} onClick={() => setActiveTab('system')}>
+              <span className="icon">⚙️</span> System
+            </button>
+          </nav>
+        </aside>
+
+        <main className="dashboard-content">
+
+      {activeTab === 'upload' && (
+        <div className="upload-section">
+          <h2>Upload Manuscript</h2>
+          <iframe 
+            src="/" 
+            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
+            title="Upload Manuscript"
+          />
+        </div>
+      )}
 
       {activeTab === 'overview' && stats && (
         <div className="overview-section">
@@ -283,10 +343,61 @@ const SuperAdminDashboard = () => {
         <div className="users-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>User Management</h2>
-            <button onClick={() => setShowCreateUser(!showCreateUser)} className="create-user-btn">
-              {showCreateUser ? '❌ Cancel' : '➕ Create User'}
-            </button>
+            <div>
+              <button onClick={() => setShowResetPassword(!showResetPassword)} className="create-user-btn" style={{ marginRight: '10px' }}>
+                {showResetPassword ? '❌ Cancel Reset' : '🔑 Reset Password'}
+              </button>
+              <button onClick={() => setShowCreateUser(!showCreateUser)} className="create-user-btn">
+                {showCreateUser ? '❌ Cancel' : '➕ Create User'}
+              </button>
+            </div>
           </div>
+
+          {showResetPassword && (
+            <div className="create-user-form">
+              <h3>Reset User Password</h3>
+              <form onSubmit={resetPassword}>
+                <div className="form-group">
+                  <label>Select User *</label>
+                  <select
+                    value={resetPasswordData.user_id}
+                    onChange={(e) => setResetPasswordData({...resetPasswordData, user_id: e.target.value})}
+                    required
+                  >
+                    <option value="">-- Select User --</option>
+                    {users.map(user => (
+                      <option key={user._id} value={user._id}>
+                        {user.name} ({user.email}) - {user.role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>New Password *</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showResetPasswordField ? "text" : "password"}
+                      value={resetPasswordData.new_password}
+                      onChange={(e) => setResetPasswordData({...resetPasswordData, new_password: e.target.value})}
+                      required
+                      minLength="8"
+                      placeholder="Min 8 characters"
+                      style={{ paddingRight: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPasswordField(!showResetPasswordField)}
+                      className="password-toggle"
+                      title={showResetPasswordField ? "Hide password" : "Show password"}
+                    >
+                      {showResetPasswordField ? '👁️' : '👁️🗨️'}
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" className="submit-btn">Reset Password</button>
+              </form>
+            </div>
+          )}
 
           {showCreateUser && (
             <div className="create-user-form">
@@ -404,6 +515,16 @@ const SuperAdminDashboard = () => {
                   <td>
                     <button onClick={() => toggleUserStatus(user._id, user.is_active)} className="action-btn">
                       {user.is_active ? '🚫 Deactivate' : '✅ Activate'}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setResetPasswordData({ user_id: user._id, new_password: '' });
+                        setShowResetPassword(true);
+                      }} 
+                      className="action-btn"
+                      title="Reset password"
+                    >
+                      🔑 Reset
                     </button>
                     <button onClick={() => deleteUser(user._id)} className="action-btn danger">🗑️ Delete</button>
                   </td>
@@ -622,6 +743,8 @@ const SuperAdminDashboard = () => {
           </div>
         </div>
       )}
+        </main>
+      </div>
     </div>
   );
 };

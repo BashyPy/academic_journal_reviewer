@@ -26,6 +26,11 @@ class UpdateUserRoleRequest(BaseModel):
     role: str
 
 
+class ResetPasswordRequest(BaseModel):
+    identifier: str  # email or username
+    new_password: str
+
+
 @router.get("")
 async def list_users(
     skip: int = 0,
@@ -166,3 +171,33 @@ async def activate_user(
     )
 
     return {"message": "User activated"}
+
+
+@router.post("/reset-password")
+async def reset_user_password(
+    request: ResetPasswordRequest,
+    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+):
+    """Reset user password (admin only)"""
+    db = await mongodb_service.get_database()
+    user = await db.users.find_one({"$or": [{"email": request.identifier}, {"username": request.identifier}]})
+    
+    if not user:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
+    
+    try:
+        success = await user_service.update_password(user["email"], request.new_password)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
+        
+        await audit_logger.log_event(
+            event_type="admin_password_reset",
+            user_id=admin.get("email", admin.get("name")),
+            details={"target_user": request.identifier},
+            severity="warning",
+        )
+        
+        return {"message": "Password reset successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

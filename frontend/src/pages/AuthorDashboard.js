@@ -101,15 +101,27 @@ const AuthorDashboard = () => {
         </div>
         <div className="user-info">
           <span>👤 {user?.name || user?.email}</span>
+          <button onClick={() => navigate('/')} className="btn-home">🏠 Home</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </div>
 
       <div className="dashboard-tabs">
         <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
+        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload</button>
         <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>My Submissions</button>
         <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
       </div>
+
+      {activeTab === 'upload' && (
+        <div className="upload-tab">
+          <iframe 
+            src="/" 
+            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
+            title="Upload Manuscript"
+          />
+        </div>
+      )}
 
       {activeTab === 'overview' && (
         <div className="overview-tab">

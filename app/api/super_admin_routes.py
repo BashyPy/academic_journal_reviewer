@@ -216,6 +216,11 @@ class CreateUserRequest(BaseModel):
     username: Optional[str] = None
 
 
+class ResetPasswordRequest(BaseModel):
+    user_id: str
+    new_password: str
+
+
 @router.post("/users/create")
 async def create_user_account(
     request: CreateUserRequest,
@@ -488,3 +493,36 @@ async def delete_submission(
     )
     
     return {"message": "Submission deleted successfully"}
+
+
+@router.post("/users/reset-password")
+async def reset_user_password(
+    request: ResetPasswordRequest,
+    admin: dict = Depends(require_super_admin),
+):
+    """Reset user password (super admin only)"""
+    from bson import ObjectId
+    from app.services.user_service import user_service
+    
+    db = await mongodb_service.get_database()
+    user = await db.users.find_one({"_id": ObjectId(request.user_id)})
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        success = await user_service.update_password(user["email"], request.new_password)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to reset password")
+        
+        await audit_logger.log_event(
+            event_type="password_reset_by_admin",
+            user_id=admin.get("user_id"),
+            details={"target_user_id": request.user_id, "target_email": user["email"]},
+            severity="warning",
+        )
+        
+        return {"message": "Password reset successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

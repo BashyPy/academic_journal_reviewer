@@ -43,3 +43,7 @@ scripts
 requirements-main.txt
 
 diagrams/README.md
+coverage.json
+run_coverage.py
+run_coverage.sh
+coverage.sh
