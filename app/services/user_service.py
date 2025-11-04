@@ -28,18 +28,14 @@ class UserService:
     def hash_password(self, password: str) -> str:
         """Hash password with salt"""
         salt = secrets.token_hex(16)
-        pwd_hash = hashlib.pbkdf2_hmac(
-            "sha256", password.encode(), salt.encode(), 100000
-        )
+        pwd_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
         return f"{salt}${pwd_hash.hex()}"
 
     def verify_password(self, password: str, hashed: str) -> bool:
         """Verify password against hash"""
         try:
             salt, pwd_hash = hashed.split("$")
-            new_hash = hashlib.pbkdf2_hmac(
-                "sha256", password.encode(), salt.encode(), 100000
-            )
+            new_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000)
             return new_hash.hex() == pwd_hash
         except Exception:
             return False
@@ -58,7 +54,7 @@ class UserService:
         is_valid, msg = validate_password(password)
         if not is_valid:
             raise ValueError(msg)
-        
+
         # Validate username format
         if username:
             is_valid, msg = validate_username(username)
@@ -69,7 +65,7 @@ class UserService:
         existing = await self.collection.find_one({"email": email})
         if existing:
             raise ValueError("Email already registered")
-        
+
         # Check username uniqueness
         if username:
             existing_username = await self.collection.find_one({"username": username})
@@ -88,7 +84,7 @@ class UserService:
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
-        
+
         if username:
             user["username"] = username
 
@@ -122,12 +118,12 @@ class UserService:
     async def update_password(self, email: str, new_password: str) -> bool:
         """Update user password"""
         await self.initialize()
-        
+
         # Validate password strength
         is_valid, msg = validate_password(new_password)
         if not is_valid:
             raise ValueError(msg)
-        
+
         result = await self.collection.update_one(
             {"email": email},
             {
@@ -143,9 +139,7 @@ class UserService:
         """Update user profile"""
         await self.initialize()
         profile_data["updated_at"] = datetime.now()
-        result = await self.collection.update_one(
-            {"email": email}, {"$set": profile_data}
-        )
+        result = await self.collection.update_one({"email": email}, {"$set": profile_data})
         return result.modified_count > 0
 
     async def delete_user(self, email: str) -> bool:
@@ -160,7 +154,7 @@ class UserService:
         await self.initialize()
         result = await self.collection.update_one(
             {"email": old_email},
-            {"$set": {"email": new_email, "pending_email": None, "updated_at": datetime.now()}}
+            {"$set": {"email": new_email, "pending_email": None, "updated_at": datetime.now()}},
         )
         logger.info(f"Email changed: {old_email} -> {new_email}")
         return result.modified_count > 0
@@ -175,7 +169,7 @@ class UserService:
         user = await self.get_user_by_email(email_or_username)
         if not user:
             user = await self.get_user_by_username(email_or_username)
-        
+
         if user and self.verify_password(password, user["password"]):
             if not user.get("active", True):
                 return None

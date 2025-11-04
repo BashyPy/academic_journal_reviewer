@@ -16,32 +16,32 @@ class TestAPIRoutes:
         from app.api.routes import upload_submission
         from fastapi import UploadFile
         from io import BytesIO
-        
+
         with patch('app.api.routes.document_cache_service') as mock_cache, \
-             patch('app.api.routes.mongodb_service') as mock_db:
-            
+             patch('app.api.routes.mongodb_service') as _mock_db:
+
             mock_cache.get_cached_submission = AsyncMock(return_value={
                 "_id": "cached123",
                 "status": "completed"
             })
-            
+
             file = UploadFile(filename="test.pdf", file=BytesIO(b"test"))
             user = {"email": "test@test.com"}
-            
+
             result = await upload_submission(file, user)
             assert result["submission_id"] == "cached123"
-    
+
     @pytest.mark.asyncio
     async def test_download_pdf_report(self):
         from app.api.routes import download_pdf_report
-        
+
         with patch('app.api.routes.mongodb_service') as mock_db:
             mock_db.get_submission = AsyncMock(return_value={
                 "_id": "test123",
                 "pdf_report": b"PDF content",
                 "title": "Test Paper"
             })
-            
+
             result = await download_pdf_report("test123", {"email": "test@test.com"})
             assert result is not None
 
@@ -53,35 +53,35 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_verify_email(self):
         from app.api.auth_routes import verify_email
-        
+
         with patch('app.api.auth_routes.user_service') as mock_user:
             mock_user.verify_email_token = AsyncMock(return_value=True)
             result = await verify_email("valid_token")
             assert result["message"] == "Email verified successfully"
-    
+
     @pytest.mark.asyncio
     async def test_request_password_reset(self):
         from app.api.auth_routes import request_password_reset
         from app.models.auth_schemas import PasswordResetRequest
-        
+
         with patch('app.api.auth_routes.user_service') as mock_user, \
              patch('app.api.auth_routes.email_service') as mock_email:
-            
+
             mock_user.get_user_by_email = AsyncMock(return_value={"email": "test@test.com"})
             mock_email.send_password_reset = AsyncMock()
-            
+
             req = PasswordResetRequest(email="test@test.com")
             result = await request_password_reset(req)
             assert "message" in result
-    
+
     @pytest.mark.asyncio
     async def test_reset_password(self):
         from app.api.auth_routes import reset_password
         from app.models.auth_schemas import PasswordResetConfirm
-        
+
         with patch('app.api.auth_routes.user_service') as mock_user:
             mock_user.reset_password_with_token = AsyncMock(return_value=True)
-            
+
             req = PasswordResetConfirm(token="valid_token", new_password="NewPass123!")
             result = await reset_password(req)
             assert result["message"] == "Password reset successfully"
@@ -94,25 +94,25 @@ class TestUserService:
     @pytest.mark.asyncio
     async def test_get_user_by_email(self):
         from app.services.user_service import user_service
-        
+
         with patch.object(user_service, 'users_collection') as mock_coll:
             mock_coll.find_one = AsyncMock(return_value={"email": "test@test.com"})
             result = await user_service.get_user_by_email("test@test.com")
             assert result["email"] == "test@test.com"
-    
+
     @pytest.mark.asyncio
     async def test_get_user_by_api_key(self):
         from app.services.user_service import user_service
-        
+
         with patch.object(user_service, 'users_collection') as mock_coll:
             mock_coll.find_one = AsyncMock(return_value={"api_key": "key123"})
             result = await user_service.get_user_by_api_key("key123")
             assert result["api_key"] == "key123"
-    
+
     @pytest.mark.asyncio
     async def test_update_last_login(self):
         from app.services.user_service import user_service
-        
+
         with patch.object(user_service, 'users_collection') as mock_coll:
             mock_coll.update_one = AsyncMock()
             await user_service.update_last_login("test@test.com")
@@ -126,25 +126,25 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_get_current_user_jwt(self):
         from app.middleware.auth import get_current_user
-        
+
         with patch('app.middleware.auth.user_service') as mock_user:
             mock_user.get_user_by_email = AsyncMock(return_value={
                 "email": "test@test.com",
                 "active": True
             })
-            
+
             creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
-            
+
             with patch('app.middleware.auth.jwt.decode', return_value={"sub": "test@test.com"}):
                 result = await get_current_user(creds)
                 assert result["email"] == "test@test.com"
-    
+
     @pytest.mark.asyncio
     async def test_get_current_user_invalid_token(self):
         from app.middleware.auth import get_current_user
-        
+
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid")
-        
+
         with patch('app.middleware.auth.jwt.decode', side_effect=jwt.InvalidTokenError):
             with pytest.raises(HTTPException) as exc:
                 await get_current_user(creds)
@@ -157,18 +157,18 @@ class TestAuthMiddleware:
 class TestPermissionsMiddleware:
     def test_has_permission(self):
         from app.middleware.permissions import has_permission
-        
+
         user = {"role": "admin"}
         assert has_permission(user, "manage_users")
         assert not has_permission(user, "invalid_permission")
-    
+
     def test_require_role_decorator(self):
         from app.middleware.permissions import require_role
-        
+
         @require_role("admin")
         async def test_func(user: dict):
             return "success"
-        
+
         assert test_func is not None
 
 
@@ -179,28 +179,28 @@ class TestDownloadRoutes:
     @pytest.mark.asyncio
     async def test_download_manuscript(self):
         from app.api.download_routes import download_manuscript
-        
+
         with patch('app.api.download_routes.mongodb_service') as mock_db:
             mock_db.get_submission = AsyncMock(return_value={
                 "_id": "test123",
                 "file_content": b"PDF content",
                 "file_metadata": {"original_filename": "test.pdf"}
             })
-            
+
             result = await download_manuscript("test123", {"email": "test@test.com"})
             assert result is not None
-    
+
     @pytest.mark.asyncio
     async def test_download_review_pdf(self):
         from app.api.download_routes import download_review_pdf
-        
+
         with patch('app.api.download_routes.mongodb_service') as mock_db:
             mock_db.get_submission = AsyncMock(return_value={
                 "_id": "test123",
                 "pdf_report": b"Report content",
                 "title": "Test"
             })
-            
+
             result = await download_review_pdf("test123", {"email": "test@test.com"})
             assert result is not None
 
@@ -212,10 +212,10 @@ class TestWebAuthnService:
     @pytest.mark.asyncio
     async def test_store_credential(self):
         from app.services.webauthn_service import webauthn_service
-        
+
         with patch.object(webauthn_service, 'credentials_collection') as mock_coll:
             mock_coll.insert_one = AsyncMock()
-            
+
             await webauthn_service.store_credential(
                 "test@test.com",
                 "cred123",
@@ -223,11 +223,11 @@ class TestWebAuthnService:
                 0
             )
             mock_coll.insert_one.assert_called_once()
-    
+
     @pytest.mark.asyncio
     async def test_get_credentials(self):
         from app.services.webauthn_service import webauthn_service
-        
+
         with patch.object(webauthn_service, 'credentials_collection') as mock_coll:
             mock_cursor = Mock()
             mock_cursor.to_list = AsyncMock(return_value=[{"credential_id": "cred123"}])

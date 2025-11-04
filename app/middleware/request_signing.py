@@ -18,14 +18,10 @@ class RequestSigner:
     def __init__(self, secret_key: str):
         self.secret_key = secret_key.encode()
 
-    def generate_signature(
-        self, method: str, path: str, timestamp: str, body: str = ""
-    ) -> str:
+    def generate_signature(self, method: str, path: str, timestamp: str, body: str = "") -> str:
         """Generate request signature"""
         message = f"{method}|{path}|{timestamp}|{body}"
-        signature = hmac.new(
-            self.secret_key, message.encode(), hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(self.secret_key, message.encode(), hashlib.sha256).hexdigest()
         return signature
 
     def verify_signature(
@@ -45,9 +41,7 @@ class RequestSigner:
             return False
 
 
-async def verify_request_signature(
-    request: Request, signer: Optional[RequestSigner] = None
-):
+async def verify_request_signature(request: Request, signer: Optional[RequestSigner] = None):
     """Middleware to verify request signatures"""
     if not signer:
         return  # Skip if signing not configured

@@ -11,8 +11,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     name: str = Field(min_length=2)
     username: Optional[str] = Field(None, min_length=3, max_length=30)
-    
-    @field_validator('password')
+
+    @field_validator("password")
     @classmethod
     def validate_password(cls, v):
         if not re.search(r"[a-z]", v):
@@ -24,8 +24,8 @@ class RegisterRequest(BaseModel):
         if not re.search(r"[^a-zA-Z0-9]", v):
             raise ValueError("Password must contain at least one special character")
         return v
-    
-    @field_validator('username')
+
+    @field_validator("username")
     @classmethod
     def validate_username(cls, v):
         if v is None:
@@ -55,8 +55,8 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
     otp: str = Field(min_length=6, max_length=6)
     new_password: str = Field(min_length=8, max_length=128)
-    
-    @field_validator('new_password')
+
+    @field_validator("new_password")
     @classmethod
     def validate_password(cls, v):
         if not re.search(r"[a-z]", v):
@@ -73,8 +73,8 @@ class ResetPasswordRequest(BaseModel):
 class UpdatePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=128)
-    
-    @field_validator('new_password')
+
+    @field_validator("new_password")
     @classmethod
     def validate_password(cls, v):
         if not re.search(r"[a-z]", v):

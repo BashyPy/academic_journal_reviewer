@@ -27,14 +27,14 @@ async def create_default_admin():
             password=DEFAULT_ADMIN_PASSWORD,
             name=DEFAULT_ADMIN_NAME,
             role="super_admin",
-            username=DEFAULT_ADMIN_USERNAME
+            username=DEFAULT_ADMIN_USERNAME,
         )
-        
+
         await user_service.verify_email(DEFAULT_ADMIN_EMAIL)
-        
+
         logger.info(f"✅ Default admin created: {DEFAULT_ADMIN_EMAIL}")
         logger.info(f"🔑 API Key: {admin['api_key']}")
-        
+
         return admin
     except Exception as e:
         logger.error(f"Failed to create default admin: {e}")

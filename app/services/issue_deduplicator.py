@@ -59,15 +59,11 @@ class IssueDeduplicator:
         try:
             if isinstance(existing, dict):
                 existing.update(
-                    incoming
-                    if isinstance(incoming, dict)
-                    else getattr(incoming, "__dict__", {})
+                    incoming if isinstance(incoming, dict) else getattr(incoming, "__dict__", {})
                 )
             elif hasattr(existing, "__dict__"):
                 existing.__dict__.update(
-                    incoming
-                    if isinstance(incoming, dict)
-                    else getattr(incoming, "__dict__", {})
+                    incoming if isinstance(incoming, dict) else getattr(incoming, "__dict__", {})
                 )
         except Exception:
             # Swallow errors here to keep deduplication robust; nothing to merge on failure.
@@ -88,9 +84,9 @@ class IssueDeduplicator:
                 if self._is_similar(description, existing_desc):
                     # Keep the one with higher severity
                     severity_order = {"high": 3, "medium": 2, "low": 1}
-                    if severity_order.get(
-                        issue.get("severity", "low"), 1
-                    ) > severity_order.get(existing.get("severity", "low"), 1):
+                    if severity_order.get(issue.get("severity", "low"), 1) > severity_order.get(
+                        existing.get("severity", "low"), 1
+                    ):
                         unique_issues.remove(existing)
                         unique_issues.append(issue)
                     is_duplicate = True
@@ -101,9 +97,7 @@ class IssueDeduplicator:
 
         return unique_issues
 
-    def deduplicate_findings(
-        self, all_findings: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def deduplicate_findings(self, all_findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Remove duplicate findings across agents."""
         unique_findings: List[Dict[str, Any]] = []
         # Keep a parallel list of normalized finding texts to avoid repeated _get_field calls

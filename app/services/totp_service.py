@@ -1,7 +1,8 @@
+import base64
+from io import BytesIO
+
 import pyotp
 import qrcode
-from io import BytesIO
-import base64
 
 
 class TOTPService:
@@ -11,9 +12,7 @@ class TOTPService:
 
     def get_totp_uri(self, email: str, secret: str, issuer: str = "AARIS") -> str:
         """Generate TOTP provisioning URI for QR code."""
-        return pyotp.totp.TOTP(secret).provisioning_uri(
-            name=email, issuer_name=issuer
-        )
+        return pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer)
 
     def generate_qr_code(self, uri: str) -> str:
         """Generate QR code image as base64 string."""
@@ -21,7 +20,7 @@ class TOTPService:
         qr.add_data(uri)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
-        
+
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         buffer.seek(0)

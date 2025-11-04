@@ -314,9 +314,7 @@ class DomainDetector:
         }
 
     def _tokenize_submission(self, submission: Dict[str, Any]) -> List[str]:
-        combined = (
-            submission.get("content", "") + " " + submission.get("title", "")
-        ).lower()
+        combined = (submission.get("content", "") + " " + submission.get("title", "")).lower()
         return re.findall(r"\w+", combined)
 
     def _build_ngram_sets_from_tokens(self, tokens: List[str]) -> Dict[int, Set[str]]:

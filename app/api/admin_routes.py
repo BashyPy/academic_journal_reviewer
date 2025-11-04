@@ -21,9 +21,7 @@ class RevokeAPIKeyRequest(BaseModel):
 
 
 @router.post("/api-keys")
-async def create_api_key(
-    request: CreateAPIKeyRequest, admin: dict = Depends(require_admin)
-):
+async def create_api_key(request: CreateAPIKeyRequest, admin: dict = Depends(require_admin)):
     """Create new API key (admin only)"""
     result = await auth_service.create_api_key(
         name=request.name, role=request.role, expires_days=request.expires_days
@@ -33,16 +31,12 @@ async def create_api_key(
 
 
 @router.delete("/api-keys")
-async def revoke_api_key(
-    request: RevokeAPIKeyRequest, admin: dict = Depends(require_admin)
-):
+async def revoke_api_key(request: RevokeAPIKeyRequest, admin: dict = Depends(require_admin)):
     """Revoke API key (admin only)"""
     success = await auth_service.revoke_api_key(request.api_key)
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
-    await audit_logger.log_api_key_revoked(
-        request.api_key, admin.get("name", "unknown")
-    )
+    await audit_logger.log_api_key_revoked(request.api_key, admin.get("name", "unknown"))
     return {"message": "API key revoked"}
 
 

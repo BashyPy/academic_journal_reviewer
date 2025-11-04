@@ -46,9 +46,7 @@ class OTPService:
         logger.info(f"OTP created for {email}")
         return otp
 
-    async def verify_otp(
-        self, email: str, otp: str, purpose: str = "verification"
-    ) -> bool:
+    async def verify_otp(self, email: str, otp: str, purpose: str = "verification") -> bool:
         """Verify OTP"""
         await self.initialize()
         doc = await self.collection.find_one(
@@ -62,9 +60,7 @@ class OTPService:
         )
 
         if doc:
-            await self.collection.update_one(
-                {"_id": doc["_id"]}, {"$set": {"verified": True}}
-            )
+            await self.collection.update_one({"_id": doc["_id"]}, {"$set": {"verified": True}})
             logger.info(f"OTP verified for {email}")
             return True
 

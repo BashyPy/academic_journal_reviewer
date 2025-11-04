@@ -99,9 +99,7 @@ class PDFReportGenerator:
         # Minimal escaping to avoid ReportLab markup errors
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    def generate_pdf_report(
-        self, review_content: str, submission_info: Dict[str, Any]
-    ) -> BytesIO:
+    def generate_pdf_report(self, review_content: str, submission_info: Dict[str, Any]) -> BytesIO:
         """
         Generate a PDF report from review_content and submission_info with validation and robust error handling.
         """
@@ -127,23 +125,17 @@ class PDFReportGenerator:
             story.extend(self._create_header(submission_info))
         except Exception:
             self.logger.error(
-                Exception(
-                    "Failed to create PDF header; continuing with minimal header"
-                ),
+                Exception("Failed to create PDF header; continuing with minimal header"),
                 {"component": "pdf_generator", "function": "generate_pdf_report"},
             )
             # Add a minimal header so PDF still generates
             story.append(
-                self._safe_paragraph(
-                    DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
-                )
+                self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
             )
             story.append(Spacer(1, 10))
             # Add a minimal header so PDF still generates
             story.append(
-                self._safe_paragraph(
-                    DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
-                )
+                self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
             )
             story.append(Spacer(1, 10))
 
@@ -176,9 +168,7 @@ class PDFReportGenerator:
             story.extend(parsed)
         except Exception:
             self.logger.error(
-                Exception(
-                    "Failed to parse review content; inserting error notice into PDF"
-                ),
+                Exception("Failed to parse review content; inserting error notice into PDF"),
                 {"component": "pdf_generator", "function": "generate_pdf_report"},
             )
             story.append(
@@ -212,24 +202,18 @@ class PDFReportGenerator:
             buffer.seek(0)
             return buffer
         except Exception as e:
-            self.logger.error(
-                e, {"component": "pdf_generator", "function": "generate_pdf_report"}
-            )
+            self.logger.error(e, {"component": "pdf_generator", "function": "generate_pdf_report"})
             raise RuntimeError("PDF generation failed") from e
 
         # Title
         title = submission_info.get("title", DEFAULT_REPORT_TITLE)
         elements.append(
-            self._safe_paragraph(
-                DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
-            )
+            self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
         )
         elements.append(Spacer(1, 10))
         title = submission_info.get("title", DEFAULT_REPORT_TITLE)
         elements.append(
-            self._safe_paragraph(
-                DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]
-            )
+            self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
         )
         elements.append(Spacer(1, 10))
 
@@ -259,9 +243,7 @@ class PDFReportGenerator:
         # Date
         date_str = datetime.now().strftime("%B %d, %Y")
         elements.append(
-            self._safe_paragraph(
-                f"<b>Review Date:</b> {date_str}", self.styles["AcademicBodyText"]
-            )
+            self._safe_paragraph(f"<b>Review Date:</b> {date_str}", self.styles["AcademicBodyText"])
         )
 
         return elements
@@ -276,17 +258,13 @@ class PDFReportGenerator:
             if not line:
                 continue
 
-            handled, current_section = self._handle_special_line(
-                line, elements, current_section
-            )
+            handled, current_section = self._handle_special_line(line, elements, current_section)
             if handled:
                 continue
 
             # Regular paragraphs (fallback)
             clean_line = self._clean_markdown(line)
-            elements.append(
-                self._safe_paragraph(clean_line, self.styles["AcademicBodyText"])
-            )
+            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicBodyText"]))
 
         # Process any remaining section
         if current_section:
@@ -294,9 +272,7 @@ class PDFReportGenerator:
 
         return elements
 
-    def _handle_special_line(
-        self, line: str, elements: list, current_section: list
-    ) -> tuple:
+    def _handle_special_line(self, line: str, elements: list, current_section: list) -> tuple:
         # Handles section headers, subsections, bullets and numbered lists.
         # Returns (handled: bool, current_section: list)
         if line.startswith("## "):
@@ -304,41 +280,31 @@ class PDFReportGenerator:
                 elements.extend(self._process_section(current_section))
                 current_section = []
             header = line[3:].strip()
-            elements.append(
-                self._safe_paragraph(header, self.styles["AcademicSectionHeader"])
-            )
+            elements.append(self._safe_paragraph(header, self.styles["AcademicSectionHeader"]))
             return True, current_section
 
         if line.startswith("### "):
             header = line[4:].strip()
-            elements.append(
-                self._safe_paragraph(header, self.styles["AcademicSubHeader"])
-            )
+            elements.append(self._safe_paragraph(header, self.styles["AcademicSubHeader"]))
             return True, current_section
 
         # Handle Line-by-Line Recommendations with better formatting
         if line.startswith("Line ") and ":" in line:
             clean_line = self._clean_markdown(line)
-            elements.append(
-                self._safe_paragraph(clean_line, self.styles["AcademicIssueText"])
-            )
+            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicIssueText"]))
             return True, current_section
 
         if line.startswith("- "):
             bullet_text = line[2:].strip()
             clean_bullet = self._clean_markdown(bullet_text)
             elements.append(
-                self._safe_paragraph(
-                    f"• {clean_bullet}", self.styles["AcademicIssueText"]
-                )
+                self._safe_paragraph(f"• {clean_bullet}", self.styles["AcademicIssueText"])
             )
             return True, current_section
 
         if re.match(r"^\d+\.", line):
             clean_line = self._clean_markdown(line)
-            elements.append(
-                self._safe_paragraph(clean_line, self.styles["AcademicIssueText"])
-            )
+            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicIssueText"]))
             return True, current_section
 
         return False, current_section
@@ -348,9 +314,7 @@ class PDFReportGenerator:
         for line in section_lines:
             if line.strip():
                 clean_line = self._clean_markdown(line)
-                elements.append(
-                    self._safe_paragraph(clean_line, self.styles["AcademicBodyText"])
-                )
+                elements.append(self._safe_paragraph(clean_line, self.styles["AcademicBodyText"]))
         return elements
 
     def _clean_markdown(self, text: str) -> str:
@@ -387,9 +351,7 @@ class PDFReportGenerator:
         elements.append(self._safe_paragraph(footer_text, self.styles["Normal"]))
         return elements
 
-    def generate_review_pdf(
-        self, submission: Dict[str, Any], review_content: str
-    ) -> BytesIO:
+    def generate_review_pdf(self, submission: Dict[str, Any], review_content: str) -> BytesIO:
         """Generate PDF for review report - matches API call signature"""
         return self.generate_pdf_report(review_content, submission)
 

@@ -7,7 +7,7 @@ def test_password_validation():
     """Test password validation"""
     print("Testing Password Validation:")
     print("-" * 50)
-    
+
     test_cases = [
         ("weak", False, "Too short"),
         ("weakpass", False, "No uppercase, digit, or special char"),
@@ -17,7 +17,7 @@ def test_password_validation():
         ("Admin@123456!", True, "Valid strong password"),
         ("MyP@ssw0rd", True, "Valid strong password"),
     ]
-    
+
     for password, expected, description in test_cases:
         is_valid, msg = validate_password(password)
         status = "✅" if is_valid == expected else "❌"
@@ -28,7 +28,7 @@ def test_username_validation():
     """Test username validation"""
     print("\n\nTesting Username Validation:")
     print("-" * 50)
-    
+
     test_cases = [
         ("ab", False, "Too short"),
         ("a" * 31, False, "Too long"),
@@ -42,7 +42,7 @@ def test_username_validation():
         ("User123", True, "Valid username with mixed case"),
         (None, True, "Username is optional"),
     ]
-    
+
     for username, expected, description in test_cases:
         is_valid, msg = validate_username(username)
         status = "✅" if is_valid == expected else "❌"

@@ -109,9 +109,7 @@ Ensure professional academic tone and comprehensive coverage.
         unique_findings = issue_deduplicator.deduplicate_findings(all_findings)
         prioritized_issues = issue_deduplicator.prioritize_issues(unique_findings)
 
-        critiques_text = self._format_critiques_with_deduplication(
-            critiques, prioritized_issues
-        )
+        critiques_text = self._format_critiques_with_deduplication(critiques, prioritized_issues)
         overall_score = self._calculate_weighted_score(critiques, weights)
         decision = self._determine_decision(overall_score)
 
@@ -126,9 +124,7 @@ Ensure professional academic tone and comprehensive coverage.
             domain_criteria,
         )
 
-    def _format_critiques_with_deduplication(
-        self, critiques, prioritized_issues
-    ) -> str:
+    def _format_critiques_with_deduplication(self, critiques, prioritized_issues) -> str:
         parts = []
         parts.append("AGENT SCORES:\n")
         parts.append(self._format_agent_scores(critiques))
@@ -142,9 +138,7 @@ Ensure professional academic tone and comprehensive coverage.
         moderate_issues = prioritized_issues.get("moderate", [])
         if moderate_issues:
             parts.append(f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):\n")
-            parts.append(
-                self._format_issues_list(moderate_issues[:5], quote_mode="snippet")
-            )
+            parts.append(self._format_issues_list(moderate_issues[:5], quote_mode="snippet"))
             if len(moderate_issues) > 5:
                 parts.append(
                     f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n"
@@ -184,9 +178,7 @@ Ensure professional academic tone and comprehensive coverage.
         if not highlights:
             return ""
         first = highlights[0]
-        quote_text = (
-            self._get_field(first, "text", "") or getattr(first, "text", "") or ""
-        )
+        quote_text = self._get_field(first, "text", "") or getattr(first, "text", "") or ""
         if not quote_text:
             return ""
         if quote_mode == "full":
@@ -214,9 +206,7 @@ Ensure professional academic tone and comprehensive coverage.
             highlights = self._get_field(issue, "highlights", None)
             quoted_text = self._format_quote(highlights, quote_mode)
 
-            lines.append(
-                f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n"
-            )
+            lines.append(f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n")
         return "".join(lines)
 
     def _calculate_weighted_score(self, critiques, weights: Dict[str, float]) -> float:
@@ -329,7 +319,5 @@ STRICT FORMATTING RULES:
             agent_type = critique.get("agent_type", "unknown")
             content = critique.get("content", "No content")
             score = critique.get("score", 0)
-            formatted.append(
-                f"{agent_type.title()} Agent (Score: {score}/10):\n{content}\n"
-            )
+            formatted.append(f"{agent_type.title()} Agent (Score: {score}/10):\n{content}\n")
         return "\n".join(formatted)

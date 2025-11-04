@@ -227,7 +227,7 @@ async def test_orchestrator_process_submission_success():
          patch('app.agents.orchestrator.langgraph_workflow') as mock_workflow, \
          patch('app.agents.orchestrator.rate_limiter') as mock_limiter, \
          patch('app.agents.orchestrator.document_cache_service') as mock_cache:
-        
+
         mock_db.get_submission = AsyncMock(return_value={
             "_id": "test", "title": "test.pdf", "content": "test"
         })
@@ -236,7 +236,7 @@ async def test_orchestrator_process_submission_success():
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
         mock_cache.cache_submission = AsyncMock()
-        
+
         result = await orchestrator.process_submission("test")
         assert result["status"] == "completed"
 
@@ -246,11 +246,11 @@ async def test_orchestrator_submission_not_found():
     from app.agents.orchestrator import orchestrator
     with patch('app.agents.orchestrator.mongodb_service') as mock_db, \
          patch('app.agents.orchestrator.rate_limiter') as mock_limiter:
-        
+
         mock_db.get_submission = AsyncMock(return_value=None)
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
-        
+
         with pytest.raises(ValueError):
             await orchestrator.process_submission("invalid")
 

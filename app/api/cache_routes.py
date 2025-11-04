@@ -32,9 +32,7 @@ async def get_cache_stats():
         doc_col.count_documents({"expires_at": {"$lt": now}}),
     ]
 
-    total_entries, expired_entries, doc_total, doc_expired = await asyncio.gather(
-        *tasks
-    )
+    total_entries, expired_entries, doc_total, doc_expired = await asyncio.gather(*tasks)
 
     return {
         "llm_cache": {

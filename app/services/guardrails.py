@@ -34,9 +34,7 @@ class GuardrailViolation:
             raise ValueError("GuardrailViolation 'action' must be a string.")
         self.action = self.action.strip().lower()
         if self.action not in self.VALID_ACTIONS:
-            raise ValueError(
-                f"GuardrailViolation 'action' must be one of {self.VALID_ACTIONS}."
-            )
+            raise ValueError(f"GuardrailViolation 'action' must be one of {self.VALID_ACTIONS}.")
 
 
 class AcademicGuardrails:
@@ -70,9 +68,7 @@ class AcademicGuardrails:
                 # Skip invalid patterns; in production consider logging the failure.
                 continue
 
-    def validate_submission(
-        self, submission: Dict[str, Any]
-    ) -> List[GuardrailViolation]:
+    def validate_submission(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
 
         # Check content appropriateness
@@ -91,9 +87,7 @@ class AcademicGuardrails:
 
         return violations
 
-    def _check_content_ethics(
-        self, submission: Dict[str, Any]
-    ) -> List[GuardrailViolation]:
+    def _check_content_ethics(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
 
         # Safely obtain and normalize content to a lowercase string.
@@ -123,9 +117,7 @@ class AcademicGuardrails:
 
         return violations
 
-    def _check_sensitive_data(
-        self, submission: Dict[str, Any]
-    ) -> List[GuardrailViolation]:
+    def _check_sensitive_data(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
         content = submission.get("content", "")
 
@@ -151,9 +143,7 @@ class AcademicGuardrails:
                     )
                 )
 
-    def _check_submission_integrity(
-        self, submission: Dict[str, Any]
-    ) -> List[GuardrailViolation]:
+    def _check_submission_integrity(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
 
         # Check minimum content requirements
@@ -287,9 +277,7 @@ class AcademicGuardrails:
             "has_bias": has_bias,
         }
 
-    def sanitize_content(
-        self, content: str, violations: List[GuardrailViolation]
-    ) -> str:
+    def sanitize_content(self, content: str, violations: List[GuardrailViolation]) -> str:
         """
         Sanitize content by replacing unprofessional terms when a corresponding
         'sanitize' + 'unprofessional_tone' violation is present.
@@ -317,9 +305,7 @@ class AcademicGuardrails:
         # Compile a single regex that matches any bad term, case-insensitive,
         # and perform a single substitution pass using a replacement function.
         try:
-            pattern = re.compile(
-                "|".join(re.escape(k) for k in replacements.keys()), re.IGNORECASE
-            )
+            pattern = re.compile("|".join(re.escape(k) for k in replacements.keys()), re.IGNORECASE)
 
             def _repl(match):
                 return replacements.get(match.group(0).lower(), match.group(0))

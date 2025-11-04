@@ -28,6 +28,26 @@ flake8 = "^6.1.0"
 autoflake = "^2.2.1"
 isort = "^5.12.0"
 
+[tool.black]
+line-length = 100
+target-version = ['py311']
+exclude = '''
+/(
+    \.venv
+  | venv
+  | node_modules
+  | __pycache__
+  | \.git
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".venv", "venv", "node_modules", "__pycache__", ".git", "build", "dist"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

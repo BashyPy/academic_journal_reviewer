@@ -72,9 +72,7 @@ class EnhancedLangGraphWorkflow:
             content = state.get("content", "")
             title = state.get("title", "")
             # attempt to detect domain safely
-            domain_result = self.domain_detector.detect_domain(
-                {"content": content, "title": title}
-            )
+            domain_result = self.domain_detector.detect_domain({"content": content, "title": title})
             domain = (
                 domain_result.get("primary_domain", "general")
                 if isinstance(domain_result, dict)
@@ -122,20 +120,13 @@ class EnhancedLangGraphWorkflow:
             }
             state["embeddings_created"] = False
             # preserve exception info in state for observability
-            state.setdefault("errors", []).append(
-                {"stage": "initialize_review", "error": str(e)}
-            )
+            state.setdefault("errors", []).append({"stage": "initialize_review", "error": str(e)})
             return state
 
-    async def _create_embeddings(
-        self, state: EnhancedReviewState
-    ) -> EnhancedReviewState:
+    async def _create_embeddings(self, state: EnhancedReviewState) -> EnhancedReviewState:
         try:
             # Try to create embeddings, but don't fail if it doesn't work
-            if (
-                hasattr(langchain_service, "embeddings")
-                and langchain_service.embeddings
-            ):
+            if hasattr(langchain_service, "embeddings") and langchain_service.embeddings:
                 await langchain_service.create_document_embeddings(
                     state["content"], state["metadata"]
                 )
@@ -147,20 +138,14 @@ class EnhancedLangGraphWorkflow:
             state["embeddings_created"] = False
         return state
 
-    async def _parallel_reviews(
-        self, state: EnhancedReviewState
-    ) -> EnhancedReviewState:
+    async def _parallel_reviews(self, state: EnhancedReviewState) -> EnhancedReviewState:
         # Small method-specific runners to keep branching minimal
-        async def _domain_runner(
-            kind: str, content: str, enhanced_context: Dict[str, Any]
-        ) -> str:
+        async def _domain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
             return await langchain_service.domain_aware_review(
                 content, state["domain"], kind, enhanced_context
             )
 
-        async def _chain_runner(
-            kind: str, content: str, enhanced_context: Dict[str, Any]
-        ) -> str:
+        async def _chain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
             if kind == "clarity":
                 prompt = f"""
 Perform comprehensive clarity assessment of this {state['domain']} manuscript:
@@ -177,16 +162,10 @@ Analyze:
 
 Provide detailed feedback with specific examples and scores.
 """
-                return await langchain_service.chain_of_thought_analysis(
-                    prompt, enhanced_context
-                )
-            return await langchain_service.chain_of_thought_analysis(
-                content, enhanced_context
-            )
+                return await langchain_service.chain_of_thought_analysis(prompt, enhanced_context)
+            return await langchain_service.chain_of_thought_analysis(content, enhanced_context)
 
-        async def _multi_runner(
-            kind: str, content: str, enhanced_context: Dict[str, Any]
-        ) -> str:
+        async def _multi_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
             if kind == "ethics":
                 prompt = f"""
 Conduct thorough ethical evaluation of this {state['domain']} manuscript:
@@ -203,12 +182,8 @@ Evaluate:
 
 Provide comprehensive ethical assessment with recommendations.
 """
-                return await langchain_service.multi_model_consensus(
-                    prompt, enhanced_context
-                )
-            return await langchain_service.multi_model_consensus(
-                content, enhanced_context
-            )
+                return await langchain_service.multi_model_consensus(prompt, enhanced_context)
+            return await langchain_service.multi_model_consensus(content, enhanced_context)
 
         async def _run(kind: str, max_len: int, method: str) -> str:
             try:
@@ -277,9 +252,7 @@ Provide comprehensive ethical assessment with recommendations.
                         "traceback": traceback.format_exc(),
                     }
                 )
-                reviewed_results[k] = (
-                    f"{k.title()} review failed due to internal error."
-                )
+                reviewed_results[k] = f"{k.title()} review failed due to internal error."
             else:
                 reviewed_results[k] = res
 
@@ -307,9 +280,7 @@ Provide comprehensive ethical assessment with recommendations.
 
         return state
 
-    async def _synthesize_report(
-        self, state: EnhancedReviewState
-    ) -> EnhancedReviewState:
+    async def _synthesize_report(self, state: EnhancedReviewState) -> EnhancedReviewState:
         try:
             # Use the synthesis agent for final report generation
             from app.agents.synthesis_agent import SynthesisAgent
@@ -352,9 +323,7 @@ Provide comprehensive ethical assessment with recommendations.
     def _format_critiques(self, critiques: List[Dict[str, Any]]) -> str:
         formatted = []
         for critique in critiques:
-            formatted.append(
-                f"{critique['agent_type'].title()}: {critique['content'][:500]}..."
-            )
+            formatted.append(f"{critique['agent_type'].title()}: {critique['content'][:500]}...")
         return "\n\n".join(formatted)
 
     async def execute_review(self, submission_data: Dict[str, Any]) -> str:
@@ -376,15 +345,13 @@ Provide comprehensive ethical assessment with recommendations.
             )
 
             config = {
-                "configurable": {
-                    "thread_id": str(submission_data.get("_id", "unknown"))
-                },
+                "configurable": {"thread_id": str(submission_data.get("_id", "unknown"))},
                 "recursion_limit": 50,  # Increase from default 25 to 50
             }
             final_state = await self.workflow.ainvoke(initial_state, config)
             return {
                 "final_report": final_state.get("final_report", "Review completed with errors"),
-                "domain": final_state.get("domain", "general")
+                "domain": final_state.get("domain", "general"),
             }
         except Exception as e:
             self.logger.error(

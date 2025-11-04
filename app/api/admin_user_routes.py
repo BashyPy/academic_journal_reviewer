@@ -35,7 +35,7 @@ class ResetPasswordRequest(BaseModel):
 async def list_users(
     skip: int = 0,
     limit: int = 50,
-    user: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    user: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
     """List all users (admin only)"""
     db = await mongodb_service.get_database()
@@ -51,8 +51,7 @@ async def list_users(
 
 @router.post("")
 async def create_user_admin(
-    request: CreateUserRequest,
-    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    request: CreateUserRequest, admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
 ):
     """Create user (admin only)"""
     try:
@@ -83,15 +82,13 @@ async def create_user_admin(
 @router.put("/role")
 async def update_user_role(
     request: UpdateUserRoleRequest,
-    admin: dict = Depends(require_permission(Permission.MANAGE_ROLES))
+    admin: dict = Depends(require_permission(Permission.MANAGE_ROLES)),
 ):
     """Update user role (admin only)"""
     db = await mongodb_service.get_database()
     users = db["users"]
 
-    result = await users.update_one(
-        {"email": request.email}, {"$set": {"role": request.role}}
-    )
+    result = await users.update_one({"email": request.email}, {"$set": {"role": request.role}})
 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
@@ -107,8 +104,7 @@ async def update_user_role(
 
 @router.delete("/{email}")
 async def delete_user(
-    email: str,
-    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    email: str, admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
 ):
     """Delete user account (admin only)"""
     # user_service.delete_user is expected to be async and return truthy on success
@@ -128,8 +124,7 @@ async def delete_user(
 
 @router.post("/{email}/deactivate")
 async def deactivate_user(
-    email: str,
-    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    email: str, admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
 ):
     """Deactivate user account (admin only)"""
     db = await mongodb_service.get_database()
@@ -152,8 +147,7 @@ async def deactivate_user(
 
 @router.post("/{email}/activate")
 async def activate_user(
-    email: str,
-    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    email: str, admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
 ):
     """Activate user account (admin only)"""
     db = await mongodb_service.get_database()
@@ -176,28 +170,30 @@ async def activate_user(
 @router.post("/reset-password")
 async def reset_user_password(
     request: ResetPasswordRequest,
-    admin: dict = Depends(require_permission(Permission.MANAGE_USERS))
+    admin: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
     """Reset user password (admin only)"""
     db = await mongodb_service.get_database()
-    user = await db.users.find_one({"$or": [{"email": request.identifier}, {"username": request.identifier}]})
-    
+    user = await db.users.find_one(
+        {"$or": [{"email": request.identifier}, {"username": request.identifier}]}
+    )
+
     if not user:
         raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
-    
+
     try:
         success = await user_service.update_password(user["email"], request.new_password)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
-        
+
         await audit_logger.log_event(
             event_type="admin_password_reset",
             user_id=admin.get("email", admin.get("name")),
             details={"target_user": request.identifier},
             severity="warning",
         )
-        
+
         return {"message": "Password reset successfully"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -100,7 +100,7 @@ async def test_orchestrator_process_submission():
          patch('app.agents.orchestrator.langgraph_workflow') as mock_workflow, \
          patch('app.agents.orchestrator.rate_limiter') as mock_limiter, \
          patch('app.agents.orchestrator.document_cache_service') as mock_cache:
-        
+
         mock_db.get_submission = AsyncMock(return_value={
             "_id": "test123",
             "title": "test.pdf",
@@ -111,7 +111,7 @@ async def test_orchestrator_process_submission():
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
         mock_cache.cache_submission = AsyncMock()
-        
+
         result = await orchestrator.process_submission("test123")
         assert result["status"] == "completed"
         assert result["submission_id"] == "test123"
@@ -122,11 +122,11 @@ async def test_orchestrator_handles_errors():
     """Test orchestrator error handling"""
     with patch('app.agents.orchestrator.mongodb_service') as mock_db, \
          patch('app.agents.orchestrator.rate_limiter') as mock_limiter:
-        
+
         mock_db.get_submission = AsyncMock(return_value=None)
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
-        
+
         with pytest.raises(ValueError):
             await orchestrator.process_submission("invalid_id")
 
@@ -152,7 +152,7 @@ async def test_agent_enhance_findings():
     )
     manuscript = "This is a test manuscript"
     sections = {"introduction": {"word_count": 5, "content": [(1, "This is a test")]}}
-    
+
     agent._enhance_findings_with_positions(critique, manuscript, sections)
     assert len(critique.findings) > 0
 
@@ -161,10 +161,10 @@ async def test_agent_enhance_findings():
 async def test_agent_error_handling(mock_genai_model):
     """Test agent handles LLM errors gracefully"""
     mock_genai_model.generate_content_async = AsyncMock(side_effect=Exception("LLM error"))
-    
+
     with patch('app.agents.base_agent.genai.GenerativeModel', return_value=mock_genai_model):
         agent = MethodologyAgent()
         context = {"submission_id": "test", "content": "test"}
-        
+
         with pytest.raises(Exception):
             await agent.execute_task(context)

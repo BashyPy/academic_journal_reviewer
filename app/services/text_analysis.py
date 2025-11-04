@@ -104,9 +104,7 @@ class TextAnalyzer:
         )
 
     @staticmethod
-    def _build_safe_highlight(
-        full_text: str, highlight: dict, start: int, end: int
-    ) -> dict:
+    def _build_safe_highlight(full_text: str, highlight: dict, start: int, end: int) -> dict:
         safe = {
             "text": html.escape(highlight["text"]),
             "start_pos": start,
@@ -148,8 +146,6 @@ class TextAnalyzer:
             if start == -1 or end == -1:
                 continue
 
-            validated.append(
-                TextAnalyzer._build_safe_highlight(full_text, highlight, start, end)
-            )
+            validated.append(TextAnalyzer._build_safe_highlight(full_text, highlight, start, end))
 
         return validated

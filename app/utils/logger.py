@@ -105,9 +105,7 @@ class AARISLogger:
                 default_context.update(additional_info)
             except Exception as e:
                 # If merging additional_info fails, record the failure in the context instead of raising.
-                default_context["additional_info_error"] = (
-                    f"Failed to merge additional_info: {e}"
-                )
+                default_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
         context_str = self._render_context(default_context)
 
@@ -122,9 +120,7 @@ class AARISLogger:
 
         return "\n".join(log_msg)
 
-    def _render_error_section(
-        self, error: BaseException, exc_info: bool = False
-    ) -> list[str]:
+    def _render_error_section(self, error: BaseException, exc_info: bool = False) -> list[str]:
         """Render error type/message and optional traceback into log lines."""
         lines = [
             f"ERROR TYPE: {type(error).__name__}",
@@ -134,9 +130,7 @@ class AARISLogger:
 
         if exc_info:
             try:
-                trace_lines = traceback.format_exception(
-                    type(error), error, error.__traceback__
-                )
+                trace_lines = traceback.format_exception(type(error), error, error.__traceback__)
                 lines.extend(["FULL TRACEBACK:", "".join(trace_lines)])
             except Exception as e:
                 lines.append(f"Failed to format traceback: {str(e)}")
@@ -160,9 +154,7 @@ class AARISLogger:
         except Exception as e:
             return f"Failed to render context: {e}"
 
-    def _write_log(
-        self, level: LogLevel, message: str, custom_file: Optional[Path] = None
-    ) -> None:
+    def _write_log(self, level: LogLevel, message: str, custom_file: Optional[Path] = None) -> None:
         log_hash = hash(message)
         if log_hash in self._log_cache:
             return
@@ -178,28 +170,16 @@ class AARISLogger:
         except (IOError, PermissionError) as e:
             print(f"Failed to write log: {e}", file=sys.stderr)
 
-    def debug(
-        self, message: str, additional_info: Optional[Dict[str, Any]] = None
-    ) -> None:
-        formatted = self._format_message(
-            LogLevel.DEBUG, message, additional_info=additional_info
-        )
+    def debug(self, message: str, additional_info: Optional[Dict[str, Any]] = None) -> None:
+        formatted = self._format_message(LogLevel.DEBUG, message, additional_info=additional_info)
         self._write_log(LogLevel.DEBUG, formatted)
 
-    def info(
-        self, message: str, additional_info: Optional[Dict[str, Any]] = None
-    ) -> None:
-        formatted = self._format_message(
-            LogLevel.INFO, message, additional_info=additional_info
-        )
+    def info(self, message: str, additional_info: Optional[Dict[str, Any]] = None) -> None:
+        formatted = self._format_message(LogLevel.INFO, message, additional_info=additional_info)
         self._write_log(LogLevel.INFO, formatted)
 
-    def warning(
-        self, message: str, additional_info: Optional[Dict[str, Any]] = None
-    ) -> None:
-        formatted = self._format_message(
-            LogLevel.WARNING, message, additional_info=additional_info
-        )
+    def warning(self, message: str, additional_info: Optional[Dict[str, Any]] = None) -> None:
+        formatted = self._format_message(LogLevel.WARNING, message, additional_info=additional_info)
         self._write_log(LogLevel.WARNING, formatted)
 
     def error(
@@ -234,9 +214,7 @@ class AARISLogger:
         )
         self._write_log(LogLevel.CRITICAL, formatted)
 
-    def exception(
-        self, message: str, additional_info: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def exception(self, message: str, additional_info: Optional[Dict[str, Any]] = None) -> None:
         # Safely obtain the current exception info; if retrieval fails, treat as no exception.
         try:
             _, exc_value, _ = sys.exc_info()
@@ -257,9 +235,7 @@ class AARISLogger:
             )
         else:
             # No active exception context: log a synthetic Exception with exc_info disabled.
-            self.error(
-                Exception(message), additional_info=safe_additional, exc_info=False
-            )
+            self.error(Exception(message), additional_info=safe_additional, exc_info=False)
 
     # AARIS-specific logging methods
     def log_agent_activity(
@@ -279,12 +255,8 @@ class AARISLogger:
         if additional_info:
             context.update(additional_info)
 
-        message = (
-            f"Agent {agent_type} performed {action} for submission {submission_id}"
-        )
-        formatted = self._format_message(
-            LogLevel.INFO, message, additional_info=context
-        )
+        message = f"Agent {agent_type} performed {action} for submission {submission_id}"
+        formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
         self._write_log(LogLevel.INFO, formatted, custom_file=self.agent_log)
 
     def log_review_process(
@@ -305,14 +277,10 @@ class AARISLogger:
             try:
                 context.update(additional_info)
             except Exception as e:
-                context["additional_info_error"] = (
-                    f"Failed to merge additional_info: {e}"
-                )
+                context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
         message = f"Review {submission_id} at stage {stage} is {status}"
-        formatted = self._format_message(
-            LogLevel.INFO, message, additional_info=context
-        )
+        formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
         self._write_log(LogLevel.INFO, formatted, custom_file=self.review_log)
 
     def log_api_request(
@@ -333,14 +301,10 @@ class AARISLogger:
             try:
                 context.update(additional_info)
             except Exception as e:
-                context["additional_info_error"] = (
-                    f"Failed to merge additional_info: {e}"
-                )
+                context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
         message = f"{method} {endpoint} - Status: {status_code}"
-        formatted = self._format_message(
-            LogLevel.INFO, message, additional_info=context
-        )
+        formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
         self._write_log(LogLevel.INFO, formatted, custom_file=self.api_log)
 
     def clear_logs(self, level: Optional[LogLevel] = None) -> None:
@@ -348,8 +312,7 @@ class AARISLogger:
             targets = (
                 [self.log_files[level]]
                 if level
-                else list(self.log_files.values())
-                + [self.agent_log, self.review_log, self.api_log]
+                else list(self.log_files.values()) + [self.agent_log, self.review_log, self.api_log]
             )
 
             for file_path in targets:

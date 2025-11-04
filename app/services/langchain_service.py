@@ -16,23 +16,17 @@ except ImportError:
 
         async def apredict(self, *args, **kwargs):
             # Accept both 'input' and 'prompt' to maintain compatibility, avoid redefining built-in 'input'
-            prompt = kwargs.get(
-                "input", kwargs.get("prompt", args[0] if args else None)
-            )
+            prompt = kwargs.get("input", kwargs.get("prompt", args[0] if args else None))
             return await self.llm.ainvoke(prompt)
 
         def predict(self, *args, **kwargs):
             # Accept both 'input' and 'prompt' to maintain compatibility, avoid redefining built-in 'input'
-            prompt = kwargs.get(
-                "input", kwargs.get("prompt", args[0] if args else None)
-            )
+            prompt = kwargs.get("input", kwargs.get("prompt", args[0] if args else None))
             return self.llm.invoke(prompt)
 
 
 try:
-    from langchain.memory import (
-        ConversationBufferWindowMemory as LCConversationBufferWindowMemory,
-    )
+    from langchain.memory import ConversationBufferWindowMemory as LCConversationBufferWindowMemory
 except ImportError:
     # Fallback for newer LangChain versions
     class LCConversationBufferWindowMemory:
@@ -277,8 +271,7 @@ class LangChainService:
         if not any(not isinstance(model, _DummyLLM) for model in models.values()):
             logger.error(
                 Exception(
-                    "No working LLM models initialized; all API keys may be "
-                    "invalid or missing."
+                    "No working LLM models initialized; all API keys may be " "invalid or missing."
                 ),
                 {"component": "langchain_service", "function": "_initialize_models"},
             )
@@ -293,9 +286,7 @@ class LangChainService:
 
             # If the MongoDBAtlasVectorSearch class isn't available, skip
             if not MongoDBAtlasVectorSearch:
-                logger.info(
-                    "MongoDBAtlasVectorSearch not available; vector store disabled."
-                )
+                logger.info("MongoDBAtlasVectorSearch not available; vector store disabled.")
                 return None
 
             # Cast the motor collection to a typing Collection to satisfy
@@ -387,14 +378,10 @@ class LangChainService:
             },
         }
 
-    async def create_document_embeddings(
-        self, content: str, metadata: Dict[str, Any]
-    ) -> List[str]:
+    async def create_document_embeddings(self, content: str, metadata: Dict[str, Any]) -> List[str]:
         """Create and store document embeddings for semantic search."""
         if not self.embeddings or not self.vector_store:
-            logger.info(
-                "Embeddings or vector store not available, skipping embedding creation"
-            )
+            logger.info("Embeddings or vector store not available, skipping embedding creation")
             return []
 
         try:
@@ -402,9 +389,7 @@ class LangChainService:
             max_content_length = 50000  # Reasonable limit for embeddings
             if len(content) > max_content_length:
                 content = content[:max_content_length] + "..."
-                logger.info(
-                    f"Content truncated to {max_content_length} characters for embedding"
-                )
+                logger.info(f"Content truncated to {max_content_length} characters for embedding")
 
             # Split document into chunks
             documents = self.text_splitter.create_documents([content], [metadata])
@@ -455,9 +440,7 @@ class LangChainService:
             raise ValueError(f"Requested provider '{provider}' is not initialized.")
         return provider, model
 
-    async def _get_cached_response(
-        self, cache_key: str, provider: str
-    ) -> Optional[str]:
+    async def _get_cached_response(self, cache_key: str, provider: str) -> Optional[str]:
         """Try to get a cached response; on failure return None and log."""
         try:
             return await cache_service.get(cache_key, provider)
@@ -487,9 +470,7 @@ class LangChainService:
         """Perform semantic search against the vector store with robust error handling and fallbacks."""
         try:
             if not self.vector_store or not self.embeddings:
-                logger.info(
-                    "Vector store or embeddings not available, skipping semantic search"
-                )
+                logger.info("Vector store or embeddings not available, skipping semantic search")
                 return []
 
             # Truncate query if too long
@@ -498,9 +479,7 @@ class LangChainService:
                 logger.info("Query truncated for semantic search")
 
             # Add timeout to prevent hanging
-            search_result = await asyncio.wait_for(
-                self._perform_search(query, k), timeout=10.0
-            )
+            search_result = await asyncio.wait_for(self._perform_search(query, k), timeout=10.0)
             return search_result
         except asyncio.TimeoutError:
             logger.error(
@@ -560,9 +539,7 @@ class LangChainService:
             try:
                 if hasattr(model, "ainvoke"):
                     if HumanMessage:
-                        response = await model.ainvoke(
-                            [HumanMessage(content=enhanced_prompt)]
-                        )
+                        response = await model.ainvoke([HumanMessage(content=enhanced_prompt)])
                     else:
                         response = await model.ainvoke(enhanced_prompt)
                 elif hasattr(model, "apredict"):
@@ -621,9 +598,7 @@ class LangChainService:
 
             # Invoke the model
             try:
-                response = await self._invoke_model(
-                    model, provider, enhanced_prompt, use_memory
-                )
+                response = await self._invoke_model(model, provider, enhanced_prompt, use_memory)
             except Exception:
                 logger.error(
                     Exception(f"Model invocation failed for provider '{provider}'"),
@@ -658,9 +633,7 @@ class LangChainService:
         # Try each model until one succeeds
         for model in models:
             try:
-                response = await self.invoke_with_rag(
-                    prompt, model, context, use_memory=False
-                )
+                response = await self.invoke_with_rag(prompt, model, context, use_memory=False)
                 if not response.startswith("Error:"):
                     return response
             except Exception:
@@ -696,9 +669,7 @@ class LangChainService:
             )
 
             # Truncate content appropriately for the review type
-            max_content_length = (
-                6000 if review_type in ["methodology", "literature"] else 4000
-            )
+            max_content_length = 6000 if review_type in ["methodology", "literature"] else 4000
             truncated_content = content[:max_content_length]
             if len(content) > max_content_length:
                 truncated_content += "\n\n[Content truncated for analysis]"
@@ -727,9 +698,7 @@ class LangChainService:
             ).strip()
 
             # Invoke with RAG and return response
-            response = await self.invoke_with_rag(
-                full_prompt, context=context, use_memory=False
-            )
+            response = await self.invoke_with_rag(full_prompt, context=context, use_memory=False)
             return response
 
         except Exception:
@@ -739,9 +708,7 @@ class LangChainService:
             )
             return "Error: domain_aware_review failed"
 
-    async def chain_of_thought_analysis(
-        self, prompt: str, context: Dict[str, Any] = None
-    ) -> str:
+    async def chain_of_thought_analysis(self, prompt: str, context: Dict[str, Any] = None) -> str:
         """Perform step-by-step chain-of-thought analysis."""
         # Defensively handle None context
         context = context or {}
@@ -767,9 +734,7 @@ class LangChainService:
 
         return await self.invoke_with_rag(cot_prompt, context=context)
 
-    def _build_rag_prompt(
-        self, prompt: str, context: Dict[str, Any], rag_context: str
-    ) -> str:
+    def _build_rag_prompt(self, prompt: str, context: Dict[str, Any], rag_context: str) -> str:
         """Build enhanced prompt with RAG context and token limit awareness."""
         context_info = []
 
@@ -783,11 +748,7 @@ class LangChainService:
                 if "file_type" in meta:
                     context_info.append(f"Format: {meta['file_type'].upper()}")
 
-        context_str = (
-            "\n".join(context_info)
-            if context_info
-            else "No additional context provided."
-        )
+        context_str = "\n".join(context_info) if context_info else "No additional context provided."
 
         # Truncate RAG context if too long
         if len(rag_context) > 2000:
@@ -816,16 +777,11 @@ class LangChainService:
         # Final safety check for token limits (approximate 4 chars per token)
         max_chars = 40000  # ~10k tokens
         if len(final_prompt) > max_chars:
-            final_prompt = (
-                final_prompt[:max_chars]
-                + "\n\n[Content truncated due to length limits]"
-            )
+            final_prompt = final_prompt[:max_chars] + "\n\n[Content truncated due to length limits]"
 
         return final_prompt
 
-    def _generate_cache_key(
-        self, prompt: str, provider: str, context: Dict[str, Any]
-    ) -> str:
+    def _generate_cache_key(self, prompt: str, provider: str, context: Dict[str, Any]) -> str:
         """Generate cache key for complex requests."""
         import hashlib
 
@@ -836,9 +792,7 @@ class LangChainService:
         }
         return hashlib.sha256(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
-    async def _cache_response(
-        self, cache_key: str, provider: str, response: str
-    ) -> None:
+    async def _cache_response(self, cache_key: str, provider: str, response: str) -> None:
         """Cache the response using the cache service."""
         try:
             await cache_service.set(cache_key, provider, response)

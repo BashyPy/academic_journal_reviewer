@@ -28,15 +28,15 @@ def create_access_token(user_data: dict, expires_delta: Optional[timedelta] = No
         "role": user_data["role"],
         "user_id": str(user_data.get("_id", "")),
     }
-    
+
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
-    
+
     to_encode["exp"] = expire
     to_encode["iat"] = datetime.utcnow()
-    
+
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -53,7 +53,9 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
 
 
-async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> dict:
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
     """Get current user from JWT token"""
     if not credentials:
         raise HTTPException(
@@ -61,23 +63,23 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
     payload = decode_access_token(token)
-    
+
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user = await user_service.get_user_by_email(payload["email"])
-    
+
     if not user or not user.get("active", True):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
-    
+
     return user

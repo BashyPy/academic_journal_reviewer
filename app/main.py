@@ -6,18 +6,18 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.admin_routes import router as admin_router
 from app.api.admin_dashboard_routes import router as admin_dashboard_router
+from app.api.admin_routes import router as admin_router
 from app.api.admin_user_routes import router as admin_user_router
 from app.api.auth_routes import router as auth_router
 from app.api.author_dashboard_routes import router as author_dashboard_router
+from app.api.cache_routes import router as cache_router
+from app.api.download_routes import router as download_router
 from app.api.editor_dashboard_routes import router as editor_dashboard_router
 from app.api.reviewer_dashboard_routes import router as reviewer_dashboard_router
-from app.api.cache_routes import router as cache_router
 from app.api.roles_routes import router as roles_router
-from app.api.super_admin_routes import router as super_admin_router
-from app.api.download_routes import router as download_router
 from app.api.routes import router
+from app.api.super_admin_routes import router as super_admin_router
 from app.middleware.rate_limiter import rate_limit_middleware
 from app.middleware.waf import waf_middleware
 from app.services.security_monitor import security_monitor
@@ -42,6 +42,7 @@ rate_limit_storage = defaultdict(list)
 async def startup_event():
     """Initialize default admin on startup"""
     from app.services.init_admin import create_default_admin
+
     await create_default_admin()
 
 
@@ -96,10 +97,7 @@ async def security_middleware(request: Request, call_next):
 
     # Input validation for common attack patterns
     user_agent = request.headers.get("user-agent", "")
-    if any(
-        pattern in user_agent.lower()
-        for pattern in ["<script", "javascript:", "vbscript:"]
-    ):
+    if any(pattern in user_agent.lower() for pattern in ["<script", "javascript:", "vbscript:"]):
         logger.warning(f"Suspicious user agent detected: {user_agent}")
         return JSONResponse(status_code=400, content={"detail": "Invalid request"})
 
@@ -122,9 +120,7 @@ async def security_middleware(request: Request, call_next):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:"
         )

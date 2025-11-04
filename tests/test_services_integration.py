@@ -40,7 +40,7 @@ def test_waf_check_patterns():
 def test_waf_scan_request():
     from app.middleware.waf import waf
     request = Mock(url=Mock(__str__=lambda x: "/api/test"), headers={}, method="GET")
-    ok, msg = waf.scan_request(request, "")
+    ok, _ = waf.scan_request(request, "")
     assert ok == True
 
 
@@ -54,7 +54,7 @@ async def test_mongodb_operations():
         mock_coll.find_one = AsyncMock(return_value={"_id": "id"})
         mock_coll.update_one = AsyncMock()
         mock_db.__getitem__ = Mock(return_value=mock_coll)
-        
+
         result = await mongodb_service.save_submission({"title": "test", "content": "test"})
         assert result == "id"
 
@@ -66,7 +66,7 @@ async def test_user_operations():
     with patch.object(user_service, 'users_collection') as mock_coll:
         mock_coll.find_one = AsyncMock(return_value=None)
         mock_coll.insert_one = AsyncMock(return_value=Mock(inserted_id="id"))
-        
+
         result = await user_service.create_user("test@test.com", "Pass123!", "Test")
         assert result is not None
 
@@ -79,10 +79,10 @@ async def test_cache_operations():
         mock_cache.get = Mock(return_value=b'{"data": "test"}')
         mock_cache.set = Mock(return_value=True)
         mock_cache.flushdb = Mock(return_value=True)
-        
+
         result = await cache_service.get("key", "provider")
         assert result == {"data": "test"}
-        
+
         await cache_service.set("key", "provider", "value")
         await cache_service.clear_all()
 
@@ -131,7 +131,7 @@ async def test_document_cache():
     with patch.object(document_cache_service, 'cache') as mock_cache:
         mock_cache.get = Mock(return_value=b'{"data": "test"}')
         mock_cache.setex = Mock(return_value=True)
-        
+
         result = await document_cache_service.get_cached_submission("hash")
         assert result == {"data": "test"}
 
@@ -161,7 +161,7 @@ def test_logger_operations():
 # Text Analysis
 def test_text_analysis():
     from app.services.text_analysis import TextAnalyzer
-    start, end = TextAnalyzer.find_text_position("test content", "content")
+    start, _ = TextAnalyzer.find_text_position("test content", "content")
     assert start >= 0
 
 

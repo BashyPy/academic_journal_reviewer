@@ -50,16 +50,10 @@ class WAF:
     ]
 
     def __init__(self):
-        self.sql_regex = [
-            re.compile(p, re.IGNORECASE) for p in self.SQL_INJECTION_PATTERNS
-        ]
+        self.sql_regex = [re.compile(p, re.IGNORECASE) for p in self.SQL_INJECTION_PATTERNS]
         self.xss_regex = [re.compile(p, re.IGNORECASE) for p in self.XSS_PATTERNS]
-        self.path_regex = [
-            re.compile(p, re.IGNORECASE) for p in self.PATH_TRAVERSAL_PATTERNS
-        ]
-        self.cmd_regex = [
-            re.compile(p, re.IGNORECASE) for p in self.COMMAND_INJECTION_PATTERNS
-        ]
+        self.path_regex = [re.compile(p, re.IGNORECASE) for p in self.PATH_TRAVERSAL_PATTERNS]
+        self.cmd_regex = [re.compile(p, re.IGNORECASE) for p in self.COMMAND_INJECTION_PATTERNS]
 
     def check_patterns(self, text: str, patterns: List[re.Pattern]) -> bool:
         """Check if text matches any pattern"""
@@ -75,7 +69,15 @@ class WAF:
         return True, "OK"
 
     def _check_headers(self, headers) -> tuple[bool, str]:
-        safe_headers = {"accept", "accept-encoding", "accept-language", "content-type", "user-agent", "host", "connection"}
+        safe_headers = {
+            "accept",
+            "accept-encoding",
+            "accept-language",
+            "content-type",
+            "user-agent",
+            "host",
+            "connection",
+        }
         for key, value in headers.items():
             if key.lower() in safe_headers:
                 continue

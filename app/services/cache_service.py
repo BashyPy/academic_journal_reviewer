@@ -71,9 +71,7 @@ class CacheService:
 
             return None
         except Exception as e:
-            self.logger.error(
-                e, additional_info={"operation": "cache_get", "provider": provider}
-            )
+            self.logger.error(e, additional_info={"operation": "cache_get", "provider": provider})
             return None
 
     async def set(
@@ -110,9 +108,7 @@ class CacheService:
                 upsert=True,
             )
         except Exception as e:
-            self.logger.error(
-                e, additional_info={"operation": "cache_set", "provider": provider}
-            )
+            self.logger.error(e, additional_info={"operation": "cache_set", "provider": provider})
 
     async def clear_expired(self) -> int:
         """Remove expired cache entries."""

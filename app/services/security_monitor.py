@@ -24,9 +24,7 @@ class SecurityMonitor:
 
         # Clean old attempts (older than 1 hour)
         self.failed_auth_attempts[ip_address] = [
-            ts
-            for ts in self.failed_auth_attempts[ip_address]
-            if now - ts < timedelta(hours=1)
+            ts for ts in self.failed_auth_attempts[ip_address] if now - ts < timedelta(hours=1)
         ]
 
         # Check for brute force (5+ failures in 1 hour)

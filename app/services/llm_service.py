@@ -37,10 +37,7 @@ class GroqProvider(LLMProvider):
             if "rate_limit_exceeded" in str(e) or "413" in str(e):
                 # Fallback to smaller model with further truncated prompt
                 if len(prompt) > 20000:
-                    prompt = (
-                        prompt[:20000]
-                        + "\n\n[Content further truncated for smaller model]"
-                    )
+                    prompt = prompt[:20000] + "\n\n[Content further truncated for smaller model]"
 
                 response = await self.client.chat.completions.create(
                     model="llama3-8b-8192",  # Smaller model with better token limits

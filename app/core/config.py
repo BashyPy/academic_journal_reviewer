@@ -17,9 +17,7 @@ class Settings:
         # Secure configuration loading with validation
         # Use the centralized default constant
         self.MONGODB_URL = self._validate_mongodb_url(os.getenv("MONGODB_URL"))
-        self.MONGODB_DATABASE = self._validate_database_name(
-            os.getenv("MONGODB_DATABASE", "aaris")
-        )
+        self.MONGODB_DATABASE = self._validate_database_name(os.getenv("MONGODB_DATABASE", "aaris"))
 
         self.DEFAULT_LLM = self._validate_llm_provider(os.getenv("DEFAULT_LLM", "groq"))
         self.GROQ_API_KEY = self._validate_api_key(os.getenv("GROQ_API_KEY"))
@@ -28,7 +26,9 @@ class Settings:
         self.ANTHROPIC_API_KEY = self._validate_api_key(os.getenv("ANTHROPIC_API_KEY"))
 
         self.APP_ID = self._validate_app_id(os.getenv("APP_ID", "aaris-app"))
-        self.JWT_SECRET = os.getenv("JWT_SECRET", "change-this-secret-in-production-use-strong-random-key")
+        self.JWT_SECRET = os.getenv(
+            "JWT_SECRET", "change-this-secret-in-production-use-strong-random-key"
+        )
 
     def _validate_mongodb_url(self, url: Optional[str]) -> str:
         """Validate MongoDB URL format with defensive error handling"""
@@ -48,9 +48,7 @@ class Settings:
             logger.exception("Regex error validating MONGODB_URL, using default URI.")
             return ""
         except Exception:
-            logger.exception(
-                "Unexpected error validating MONGODB_URL, using default URI."
-            )
+            logger.exception("Unexpected error validating MONGODB_URL, using default URI.")
             return ""
 
     def _validate_database_name(self, name: Optional[str]) -> str:
@@ -67,9 +65,7 @@ class Settings:
 
             return safe_name
         except re.error:
-            logger.exception(
-                "Regex error validating MONGODB_DATABASE, falling back to 'aaris'."
-            )
+            logger.exception("Regex error validating MONGODB_DATABASE, falling back to 'aaris'.")
             return "aaris"
         except Exception:
             logger.exception(
@@ -84,9 +80,7 @@ class Settings:
             if provider and provider.lower() in valid_providers:
                 return provider.lower()
         except Exception:
-            logger.exception(
-                "Unexpected error validating DEFAULT_LLM, falling back to 'groq'."
-            )
+            logger.exception("Unexpected error validating DEFAULT_LLM, falling back to 'groq'.")
         return "groq"
 
     def _validate_api_key(self, key: Optional[str]) -> Optional[str]:
@@ -124,16 +118,12 @@ class Settings:
 
             return safe_id
         except re.error:
-            logger.exception(
-                "Regex error validating APP_ID, falling back to 'aaris-app'."
-            )
+            logger.exception("Regex error validating APP_ID, falling back to 'aaris-app'.")
             return "aaris-app"
         except Exception:
-            logger.exception(
-                "Unexpected error validating APP_ID, falling back to 'aaris-app'."
-            )
+            logger.exception("Unexpected error validating APP_ID, falling back to 'aaris-app'.")
             return "aaris-app"
-    
+
     def get_jwt_secret(self) -> str:
         """Get JWT secret with warning if using default"""
         if self.JWT_SECRET == "change-this-secret-in-production-use-strong-random-key":

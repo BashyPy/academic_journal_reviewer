@@ -24,15 +24,15 @@ async def test_api_upload_flow():
     with patch('app.api.routes.document_parser') as mock_parser, \
          patch('app.api.routes.mongodb_service') as mock_db, \
          patch('app.api.routes.orchestrator') as mock_orch:
-        
+
         mock_parser.parse_document.return_value = {"content": "test", "metadata": {}}
         mock_db.save_submission = AsyncMock(return_value="sub123")
         mock_orch.process_submission = AsyncMock()
-        
+
         from fastapi import UploadFile
         file = UploadFile(filename="test.pdf", file=BytesIO(b"test"))
         user = {"email": "test@test.com"}
-        
+
         result = await upload_submission(file, user)
         assert result is not None
 
@@ -64,10 +64,10 @@ async def test_auth_register():
     from app.models.auth_schemas import RegisterRequest
     with patch('app.api.auth_routes.user_service') as mock_user, \
          patch('app.api.auth_routes.email_service') as mock_email:
-        
+
         mock_user.create_user = AsyncMock(return_value={"email": "new@test.com"})
         mock_email.send_verification_email = AsyncMock()
-        
+
         req = RegisterRequest(email="new@test.com", password="Pass123!", name="Test")
         result = await register(req)
         assert result is not None
@@ -81,7 +81,7 @@ async def test_auth_login():
         mock_user.authenticate_user = AsyncMock(return_value={
             "email": "test@test.com", "api_key": "key123"
         })
-        
+
         req = LoginRequest(email="test@test.com", password="Pass123!")
         result = await login(req)
         assert result is not None
@@ -110,7 +110,7 @@ def test_middleware_rate_limiter():
 
 def test_middleware_waf():
     from app.middleware.waf import waf
-    ok, msg = waf.scan_request(Mock(url=Mock(__str__=lambda x: "/api"), headers={}, method="GET"), "")
+    ok, _msg = waf.scan_request(Mock(url=Mock(__str__=lambda x: "/api"), headers={}, method="GET"), "")
     assert ok == True
 
 
@@ -169,12 +169,12 @@ async def test_user_authenticate():
     with patch.object(service, 'users_collection') as mock_coll, \
          patch('app.services.user_service.security_monitor') as mock_sec, \
          patch('bcrypt.checkpw', return_value=True):
-        
+
         mock_coll.find_one = AsyncMock(return_value={
             "email": "test@test.com", "password_hash": "hash", "active": True, "email_verified": True
         })
         mock_sec.check_account_locked = AsyncMock(return_value=False)
-        
+
         result = await service.authenticate_user("test@test.com", "Pass123!")
         assert result is not None
 
@@ -330,7 +330,7 @@ def test_logger_log():
 # Text Analysis
 def test_text_find_position():
     from app.services.text_analysis import TextAnalyzer
-    start, end = TextAnalyzer.find_text_position("test content", "content")
+    start, _ = TextAnalyzer.find_text_position("test content", "content")
     assert start >= 0
 
 

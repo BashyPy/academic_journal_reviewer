@@ -1,10 +1,12 @@
 """Role definitions and permissions for academic review system"""
+
 from enum import Enum
 from typing import List, Set
 
 
 class UserRole(str, Enum):
     """User roles in the academic review system"""
+
     AUTHOR = "author"  # Submit manuscripts
     REVIEWER = "reviewer"  # Review manuscripts (future feature)
     EDITOR = "editor"  # Manage reviews and make decisions
@@ -14,29 +16,30 @@ class UserRole(str, Enum):
 
 class Permission(str, Enum):
     """System permissions"""
+
     # Submission permissions
     SUBMIT_MANUSCRIPT = "submit_manuscript"
     VIEW_OWN_SUBMISSIONS = "view_own_submissions"
     DELETE_OWN_SUBMISSIONS = "delete_own_submissions"
-    
+
     # Review permissions
     VIEW_REVIEWS = "view_reviews"
     CONDUCT_REVIEW = "conduct_review"
     EDIT_REVIEW = "edit_review"
-    
+
     # Editor permissions
     VIEW_ALL_SUBMISSIONS = "view_all_submissions"
     ASSIGN_REVIEWERS = "assign_reviewers"
     MAKE_DECISIONS = "make_decisions"
     MANAGE_WORKFLOW = "manage_workflow"
-    
+
     # Admin permissions
     MANAGE_USERS = "manage_users"
     MANAGE_ROLES = "manage_roles"
     VIEW_AUDIT_LOGS = "view_audit_logs"
     MANAGE_API_KEYS = "manage_api_keys"
     VIEW_STATISTICS = "view_statistics"
-    
+
     # System permissions
     SYSTEM_CONFIG = "system_config"
     MANAGE_SECURITY = "manage_security"

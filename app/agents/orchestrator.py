@@ -38,10 +38,12 @@ class OrchestratorAgent:
 
             # Use LangGraph workflow for processing
             workflow_result = await langgraph_workflow.execute_review(submission)
-            
+
             # Extract final report and detected domain
             if isinstance(workflow_result, dict):
-                final_report = workflow_result.get("final_report", workflow_result.get("report", ""))
+                final_report = workflow_result.get(
+                    "final_report", workflow_result.get("report", "")
+                )
                 detected_domain = workflow_result.get("domain", "general")
             else:
                 final_report = workflow_result

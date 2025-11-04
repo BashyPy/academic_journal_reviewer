@@ -62,9 +62,7 @@ class MongoDBService:
                 oid = ObjectId(submission_id)
             except Exception as e:
                 # Invalid ObjectId format, surface a clear error and keep original cause
-                self.logger.warning(
-                    f"Invalid ObjectId for submission_id: {submission_id}"
-                )
+                self.logger.warning(f"Invalid ObjectId for submission_id: {submission_id}")
                 raise ValueError(f"Invalid submission_id: {submission_id}") from e
 
             doc = await self.submissions.find_one({"_id": oid})
@@ -92,9 +90,7 @@ class MongoDBService:
                 oid = ObjectId(submission_id)
             except Exception as e:
                 # Invalid ObjectId format, surface a clear error and keep original cause
-                self.logger.warning(
-                    f"Invalid ObjectId for submission_id: {submission_id}"
-                )
+                self.logger.warning(f"Invalid ObjectId for submission_id: {submission_id}")
                 raise ValueError(f"Invalid submission_id: {submission_id}") from e
 
             result = await self.submissions.update_one({"_id": oid}, {"$set": data})

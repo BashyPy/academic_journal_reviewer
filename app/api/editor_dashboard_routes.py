@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.middleware.dual_auth import get_current_user
-from app.models.roles import UserRole, Permission, has_permission
+from app.models.roles import UserRole
 from app.services.audit_logger import audit_logger
 from app.services.mongodb_service import mongodb_service
 from app.utils.logger import get_logger
@@ -29,21 +29,21 @@ def require_editor(user: dict = Depends(get_current_user)):
 async def get_editor_stats(editor: dict = Depends(require_editor)):
     """Get editor dashboard statistics"""
     db = await mongodb_service.get_database()
-    
+
     stats = {
         "total_submissions": await db.submissions.count_documents({}),
         "pending_review": await db.submissions.count_documents({"status": "pending"}),
         "in_review": await db.submissions.count_documents({"status": "processing"}),
         "completed": await db.submissions.count_documents({"status": "completed"}),
         "failed": await db.submissions.count_documents({"status": "failed"}),
-        "today_submissions": await db.submissions.count_documents({
-            "created_at": {"$gte": datetime.now().replace(hour=0, minute=0, second=0)}
-        }),
-        "this_week": await db.submissions.count_documents({
-            "created_at": {"$gte": datetime.now() - timedelta(days=7)}
-        }),
+        "today_submissions": await db.submissions.count_documents(
+            {"created_at": {"$gte": datetime.now().replace(hour=0, minute=0, second=0)}}
+        ),
+        "this_week": await db.submissions.count_documents(
+            {"created_at": {"$gte": datetime.now() - timedelta(days=7)}}
+        ),
     }
-    
+
     return stats
 
 
@@ -57,19 +57,25 @@ async def list_all_submissions(
 ):
     """List all submissions with filtering"""
     db = await mongodb_service.get_database()
-    
+
     query = {}
     if status:
         query["status"] = status
     if domain:
         query["detected_domain"] = domain
-    
-    submissions = await db.submissions.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+
+    submissions = (
+        await db.submissions.find(query)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+        .to_list(length=limit)
+    )
     total = await db.submissions.count_documents(query)
-    
+
     for sub in submissions:
         sub["_id"] = str(sub["_id"])
-    
+
     return {"submissions": submissions, "total": total, "skip": skip, "limit": limit}
 
 
@@ -77,26 +83,30 @@ async def list_all_submissions(
 async def get_submission_details(submission_id: str, editor: dict = Depends(require_editor)):
     """Get detailed submission with review data"""
     db = await mongodb_service.get_database()
-    
+
     submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
-    
+
     submission["_id"] = str(submission["_id"])
-    
+
     # Get agent tasks
     tasks = await db.agent_tasks.find({"submission_id": submission_id}).to_list(length=100)
     for task in tasks:
         task["_id"] = str(task["_id"])
-    
+
     submission["agent_tasks"] = tasks
-    
+
     # Add download URLs
     submission["download_urls"] = {
         "manuscript": f"/api/v1/downloads/manuscripts/{submission_id}",
-        "review": f"/api/v1/downloads/reviews/{submission_id}" if submission.get("status") == "completed" else None
+        "review": (
+            f"/api/v1/downloads/reviews/{submission_id}"
+            if submission.get("status") == "completed"
+            else None
+        ),
     }
-    
+
     return submission
 
 
@@ -114,11 +124,11 @@ async def make_editorial_decision(
 ):
     """Make editorial decision on submission"""
     db = await mongodb_service.get_database()
-    
+
     submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
-    
+
     decision_data = {
         "decision": decision.decision,
         "comments": decision.comments,
@@ -126,19 +136,19 @@ async def make_editorial_decision(
         "editor_email": editor.get("email"),
         "decided_at": datetime.now(),
     }
-    
+
     await db.submissions.update_one(
         {"_id": ObjectId(submission_id)},
         {"$set": {"editorial_decision": decision_data, "updated_at": datetime.now()}},
     )
-    
+
     await audit_logger.log_event(
         event_type="editorial_decision",
         user_id=editor.get("user_id"),
         details={"submission_id": submission_id, "decision": decision.decision},
         severity="info",
     )
-    
+
     return {"message": "Editorial decision recorded", "decision": decision_data}
 
 
@@ -150,7 +160,7 @@ async def get_submission_analytics(
     """Get submission analytics over time"""
     db = await mongodb_service.get_database()
     start_date = datetime.now() - timedelta(days=days)
-    
+
     pipeline = [
         {"$match": {"created_at": {"$gte": start_date}}},
         {
@@ -163,7 +173,7 @@ async def get_submission_analytics(
         },
         {"$sort": {"_id": 1}},
     ]
-    
+
     results = await db.submissions.aggregate(pipeline).to_list(length=days)
     return {"analytics": results, "period_days": days}
 
@@ -172,13 +182,13 @@ async def get_submission_analytics(
 async def get_domain_distribution(editor: dict = Depends(require_editor)):
     """Get domain distribution"""
     db = await mongodb_service.get_database()
-    
+
     pipeline = [
         {"$group": {"_id": "$detected_domain", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 20},
     ]
-    
+
     results = await db.submissions.aggregate(pipeline).to_list(length=20)
     return {"domains": results}
 
@@ -187,14 +197,10 @@ async def get_domain_distribution(editor: dict = Depends(require_editor)):
 async def get_review_performance(editor: dict = Depends(require_editor)):
     """Get review processing performance metrics"""
     db = await mongodb_service.get_database()
-    
+
     pipeline = [
         {"$match": {"status": "completed", "completed_at": {"$exists": True}}},
-        {
-            "$project": {
-                "processing_time": {"$subtract": ["$completed_at", "$created_at"]}
-            }
-        },
+        {"$project": {"processing_time": {"$subtract": ["$completed_at", "$created_at"]}}},
         {
             "$group": {
                 "_id": None,
@@ -205,7 +211,7 @@ async def get_review_performance(editor: dict = Depends(require_editor)):
             }
         },
     ]
-    
+
     result = await db.submissions.aggregate(pipeline).to_list(length=1)
     return {"performance": result[0] if result else {}}
 
@@ -214,12 +220,12 @@ async def get_review_performance(editor: dict = Depends(require_editor)):
 async def get_status_breakdown(editor: dict = Depends(require_editor)):
     """Get submission status breakdown"""
     db = await mongodb_service.get_database()
-    
+
     pipeline = [
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
     ]
-    
+
     results = await db.submissions.aggregate(pipeline).to_list(length=10)
     return {"status_breakdown": results}
 
@@ -231,12 +237,14 @@ async def get_recent_activity(
 ):
     """Get recent editorial activity"""
     db = await mongodb_service.get_database()
-    
-    submissions = await db.submissions.find().sort("updated_at", -1).limit(limit).to_list(length=limit)
-    
+
+    submissions = (
+        await db.submissions.find().sort("updated_at", -1).limit(limit).to_list(length=limit)
+    )
+
     for sub in submissions:
         sub["_id"] = str(sub["_id"])
-    
+
     return {"recent_activity": submissions}
 
 
@@ -244,21 +252,21 @@ async def get_recent_activity(
 async def reprocess_submission(submission_id: str, editor: dict = Depends(require_editor)):
     """Reprocess a failed submission"""
     db = await mongodb_service.get_database()
-    
+
     submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
-    
+
     await db.submissions.update_one(
         {"_id": ObjectId(submission_id)},
         {"$set": {"status": "pending", "updated_at": datetime.now()}},
     )
-    
+
     await audit_logger.log_event(
         event_type="submission_reprocessed",
         user_id=editor.get("user_id"),
         details={"submission_id": submission_id},
         severity="info",
     )
-    
+
     return {"message": "Submission queued for reprocessing"}

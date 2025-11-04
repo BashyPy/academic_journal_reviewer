@@ -55,8 +55,7 @@ def _content_matches_extension(data: bytes, extension: str) -> bool:
                 with zipfile.ZipFile(bio) as zf:
                     names = zf.namelist()
                     return (
-                        any(n.startswith("word/") for n in names)
-                        or "[Content_Types].xml" in names
+                        any(n.startswith("word/") for n in names) or "[Content_Types].xml" in names
                     )
         except Exception:
             return False
@@ -89,9 +88,7 @@ def _sanitize_and_validate_filename(raw_filename: str):
     else:
         name_part = basename
         ext = ""
-    safe_name_part = "".join(
-        c for c in name_part if c.isalnum() or c in (" ", "-", "_")
-    ).rstrip()
+    safe_name_part = "".join(c for c in name_part if c.isalnum() or c in (" ", "-", "_")).rstrip()
     if not safe_name_part:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
     safe_filename = f"{safe_name_part}{ext}"
@@ -112,9 +109,7 @@ def _sanitize_and_validate_filename(raw_filename: str):
     return safe_filename, ext, basename
 
 
-async def _read_and_validate_content(
-    upload_file: UploadFile, ext: str, raw_filename: str
-):
+async def _read_and_validate_content(upload_file: UploadFile, ext: str, raw_filename: str):
     try:
         content = await upload_file.read()
     except Exception as e:
@@ -127,9 +122,7 @@ async def _read_and_validate_content(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
     if len(content) > MAX_UPLOAD_FILE_SIZE:
-        raise HTTPException(
-            status_code=413, detail="File too large. Maximum size is 50MB"
-        )
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB")
 
     content_type = (getattr(upload_file, "content_type", "") or "").lower()
     if (
@@ -185,9 +178,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     document_content = parsed_data.get("content", "")
 
     # Check if identical document already exists
-    cached_submission = await document_cache_service.get_cached_submission(
-        document_content
-    )
+    cached_submission = await document_cache_service.get_cached_submission(document_content)
     if cached_submission:
         # Apply relaxed rate limiting for cached results
         from app.middleware.rate_limiter import rate_limiter
@@ -227,9 +218,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     submission_id = await mongodb_service.save_submission(submission_data)
 
     # Audit log submission
-    await audit_logger.log_submission(
-        submission_id, user.get("name", "unknown"), client_ip
-    )
+    await audit_logger.log_submission(submission_id, user.get("name", "unknown"), client_ip)
 
     # Cache the submission for future identical uploads
     await document_cache_service.cache_submission(
@@ -284,9 +273,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
 )
 async def upload_manuscript(
     request: Request,
-    file: UploadFile = File(
-        description="Academic manuscript file (PDF or DOCX format)"
-    ),
+    file: UploadFile = File(description="Academic manuscript file (PDF or DOCX format)"),
     x_timezone: str = Header(
         default="UTC",
         description="Client timezone (e.g., 'America/New_York', 'Europe/London')",
@@ -307,9 +294,7 @@ async def upload_manuscript(
                 "endpoint": "upload_manuscript",
             },
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to process manuscript upload"
-        )
+        raise HTTPException(status_code=500, detail="Failed to process manuscript upload")
 
 
 def _convert_field_with_logging(
@@ -328,14 +313,10 @@ def _convert_field_with_logging(
             additional_info={
                 "submission_id": submission_id,
                 f"original_{field_name}": (
-                    original.isoformat()
-                    if isinstance(original, datetime)
-                    else str(original)
+                    original.isoformat() if isinstance(original, datetime) else str(original)
                 ),
                 f"converted_{field_name}": (
-                    converted.isoformat()
-                    if isinstance(converted, datetime)
-                    else str(converted)
+                    converted.isoformat() if isinstance(converted, datetime) else str(converted)
                 ),
                 "timezone": tz_string,
             },
@@ -405,9 +386,7 @@ async def get_submission(
 
         # Use helper to convert timestamp fields and centralize logging/error handling
         _convert_field_with_logging(submission, "created_at", submission_id, x_timezone)
-        _convert_field_with_logging(
-            submission, "completed_at", submission_id, x_timezone
-        )
+        _convert_field_with_logging(submission, "completed_at", submission_id, x_timezone)
 
         return submission
     except HTTPException:
@@ -552,9 +531,7 @@ def _get_disclaimer_safe(submission_id: str) -> dict:
         return {}
 
 
-def _parse_and_convert_completed_at(
-    completed_at_raw, x_timezone: str, submission_id: str
-):
+def _parse_and_convert_completed_at(completed_at_raw, x_timezone: str, submission_id: str):
     """Parse various completed_at formats and convert to the target timezone, returning an ISO string or None."""
     if not completed_at_raw:
         return None
@@ -595,9 +572,7 @@ def _build_report_filename(submission: dict) -> str:
         base_name = original_filename
     # Keep only alphanumeric and a small set of safe extra characters
     allowed_extra_chars = {" ", "-", "_"}
-    filtered_chars = (
-        ch for ch in base_name if ch.isalnum() or ch in allowed_extra_chars
-    )
+    filtered_chars = (ch for ch in base_name if ch.isalnum() or ch in allowed_extra_chars)
     safe_name = "".join(filtered_chars).rstrip() or "manuscript"
     return f"{safe_name}_reviewed.pdf"
 
@@ -648,7 +623,9 @@ def _build_content_disposition_header(filename: str, submission_id: str) -> dict
         from urllib.parse import quote as _quote
 
         filename_star = _quote(sanitized, safe="")
-        content_disposition = f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{filename_star}"
+        content_disposition = (
+            f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{filename_star}"
+        )
         return {"Content-Disposition": content_disposition}
     except Exception as e:
         logger.warning(
@@ -722,8 +699,7 @@ async def get_langgraph_status():
         from app.services.langgraph_workflow import langgraph_workflow
 
         workflow_available = (
-            hasattr(langgraph_workflow, "workflow")
-            and langgraph_workflow.workflow is not None
+            hasattr(langgraph_workflow, "workflow") and langgraph_workflow.workflow is not None
         )
 
         return {
@@ -731,9 +707,7 @@ async def get_langgraph_status():
             "langchain_service": langchain_available,
             "workflow_available": workflow_available,
             "status": (
-                "operational"
-                if (langchain_available and workflow_available)
-                else "partial"
+                "operational" if (langchain_available and workflow_available) else "partial"
             ),
             "message": "LangGraph and LangChain successfully integrated",
         }

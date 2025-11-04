@@ -18,9 +18,9 @@ async def test_generate_registration_options():
                 "displayName": "test@example.com"
             }
         }
-        
+
         options = await webauthn_service.generate_registration_options("test@example.com", "user123")
-        
+
         assert options["challenge"] == "test_challenge"
         assert options["rp"]["name"] == "AARIS"
         assert options["user"]["name"] == "test@example.com"
@@ -31,7 +31,7 @@ async def test_verify_registration():
     """Test verifying passkey registration"""
     with patch.object(webauthn_service, 'verify_registration', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = True
-        
+
         credential = {
             "id": "test_credential_id",
             "response": {
@@ -40,9 +40,9 @@ async def test_verify_registration():
                 "transports": ["internal"]
             }
         }
-        
+
         result = await webauthn_service.verify_registration("test@example.com", credential)
-        
+
         assert result is True
 
 
@@ -56,9 +56,9 @@ async def test_generate_authentication_options():
             "rpId": "localhost",
             "userVerification": "required"
         }
-        
+
         options = await webauthn_service.generate_authentication_options("test@example.com")
-        
+
         assert options["challenge"] == "auth_challenge"
         assert options["userVerification"] == "required"
 
@@ -68,7 +68,7 @@ async def test_verify_authentication():
     """Test verifying passkey authentication"""
     with patch.object(webauthn_service, 'verify_authentication', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = "test@example.com"
-        
+
         credential = {
             "id": "test_credential_id",
             "response": {
@@ -77,9 +77,9 @@ async def test_verify_authentication():
                 "counter": 1
             }
         }
-        
+
         user_email = await webauthn_service.verify_authentication(credential)
-        
+
         assert user_email == "test@example.com"
 
 
@@ -91,9 +91,9 @@ async def test_list_passkeys():
             {"id": "credential1", "transports": ["internal"]},
             {"id": "credential2", "transports": ["internal"]}
         ]
-        
+
         passkeys = await webauthn_service.list_passkeys("test@example.com")
-        
+
         assert len(passkeys) == 2
         assert passkeys[0]["id"] == "credential1"
 
@@ -103,9 +103,9 @@ async def test_delete_passkey():
     """Test deleting a passkey"""
     with patch.object(webauthn_service, 'delete_passkey', new_callable=AsyncMock) as mock_delete:
         mock_delete.return_value = True
-        
+
         result = await webauthn_service.delete_passkey("test@example.com", "credential1")
-        
+
         assert result is True
 
 
@@ -114,11 +114,11 @@ async def test_verify_authentication_invalid_credential():
     """Test authentication with invalid credential"""
     with patch.object(webauthn_service, 'verify_authentication', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = None
-        
+
         credential = {"id": "invalid_credential"}
-        
+
         user_email = await webauthn_service.verify_authentication(credential)
-        
+
         assert user_email is None
 
 
@@ -127,9 +127,9 @@ async def test_verify_registration_expired_challenge():
     """Test registration with expired challenge"""
     with patch.object(webauthn_service, 'verify_registration', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = False
-        
+
         credential = {"id": "test_credential"}
-        
+
         result = await webauthn_service.verify_registration("test@example.com", credential)
-        
+
         assert result is False

@@ -51,9 +51,7 @@ class AuditLogger:
         except Exception as e:
             logger.error(f"Failed to write audit log: {e}")
 
-    async def log_auth_attempt(
-        self, success: bool, ip_address: str, user_id: Optional[str] = None
-    ):
+    async def log_auth_attempt(self, success: bool, ip_address: str, user_id: Optional[str] = None):
         """Log authentication attempt"""
         await self.log_event(
             event_type="auth_attempt",
@@ -91,9 +89,7 @@ class AuditLogger:
             severity="info",
         )
 
-    async def log_security_event(
-        self, event_type: str, ip_address: str, details: Dict[str, Any]
-    ):
+    async def log_security_event(self, event_type: str, ip_address: str, details: Dict[str, Any]):
         """Log security event"""
         await self.log_event(
             event_type=event_type,

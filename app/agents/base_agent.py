@@ -71,13 +71,9 @@ class BaseAgent(ABC):
         if len(manuscript_content.split()) > 3000:
             from app.services.enhanced_llm_service import enhanced_llm_service
 
-            response = await enhanced_llm_service.multi_pass_analysis(
-                prompt, "detailed"
-            )
+            response = await enhanced_llm_service.multi_pass_analysis(prompt, "detailed")
             return (
-                response
-                if isinstance(response, str)
-                else getattr(response, "text", str(response))
+                response if isinstance(response, str) else getattr(response, "text", str(response))
             )
         else:
             response = await self.model.generate_content_async(prompt)
@@ -104,12 +100,8 @@ class BaseAgent(ABC):
 
             validated_highlights = []
             for highlight in finding.highlights:
-                start, end = TextAnalyzer.find_text_position(
-                    manuscript_content, highlight.text
-                )
-                line_num = manuscript_analyzer.find_line_number(
-                    manuscript_content, highlight.text
-                )
+                start, end = TextAnalyzer.find_text_position(manuscript_content, highlight.text)
+                line_num = manuscript_analyzer.find_line_number(manuscript_content, highlight.text)
                 section = (
                     manuscript_analyzer.get_section_for_line(sections, line_num)
                     if line_num

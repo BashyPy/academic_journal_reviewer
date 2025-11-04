@@ -27,9 +27,7 @@ class AuthService:
             await self.collection.create_index("key", unique=True)
             await self.collection.create_index("expires_at")
 
-    async def create_api_key(
-        self, name: str, role: str = "user", expires_days: int = 365
-    ) -> dict:
+    async def create_api_key(self, name: str, role: str = "user", expires_days: int = 365) -> dict:
         """Generate new API key"""
         await self.initialize()
         key = f"aaris_{secrets.token_urlsafe(32)}"
@@ -60,17 +58,13 @@ class AuthService:
             logger.warning(f"Expired API key used: {doc['name']}")
             return None
 
-        await self.collection.update_one(
-            {"_id": doc["_id"]}, {"$inc": {"usage_count": 1}}
-        )
+        await self.collection.update_one({"_id": doc["_id"]}, {"$inc": {"usage_count": 1}})
         return doc
 
     async def revoke_api_key(self, api_key: str) -> bool:
         """Revoke API key"""
         await self.initialize()
-        result = await self.collection.update_one(
-            {"key": api_key}, {"$set": {"active": False}}
-        )
+        result = await self.collection.update_one({"key": api_key}, {"$set": {"active": False}})
         return result.modified_count > 0
 
 
@@ -80,9 +74,7 @@ auth_service = AuthService()
 async def get_api_key(api_key: str = Security(api_key_header)) -> dict:
     """Dependency for API key authentication"""
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required")
 
     # Try new user system first
     from app.services.user_service import user_service
@@ -106,7 +98,5 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> dict:
 def require_admin(user: dict = Security(get_api_key)) -> dict:
     """Require admin role"""
     if user.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user

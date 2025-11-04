@@ -52,14 +52,10 @@ class GuardrailMiddleware:
 
             # Log warnings
             warning_violations = [
-                v
-                for v in violations
-                if getattr(v, "severity", None) in ("high", "medium")
+                v for v in violations if getattr(v, "severity", None) in ("high", "medium")
             ]
             if warning_violations:
-                logger.warning(
-                    f"Submission warnings: {[v.message for v in warning_violations]}"
-                )
+                logger.warning(f"Submission warnings: {[v.message for v in warning_violations]}")
 
             # Replay the body for downstream consumers by providing a custom receive
             async def receive_with_body():
@@ -81,9 +77,7 @@ class GuardrailMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http" and self._is_submission_path(scope):
-            handled, receive_override = await self._process_submission_request(
-                scope, receive, send
-            )
+            handled, receive_override = await self._process_submission_request(scope, receive, send)
             if handled:
                 return
             if receive_override is not None:
@@ -123,7 +117,5 @@ def apply_review_guardrails(review_content: str) -> str:
         return sanitized_content
 
     except Exception:
-        logger.exception(
-            "Unexpected error applying review guardrails; returning original content."
-        )
+        logger.exception("Unexpected error applying review guardrails; returning original content.")
         return review_content

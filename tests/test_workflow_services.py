@@ -15,7 +15,7 @@ async def test_base_agent_execute_task_complete():
             '"bias_check": "OK"}'
         )
     )
-    
+
     with patch(
         'app.agents.base_agent.genai.GenerativeModel',
         return_value=mock_model
@@ -25,7 +25,7 @@ async def test_base_agent_execute_task_complete():
         }
         mock_analyzer.find_line_number.return_value = 1
         mock_analyzer.get_section_for_line.return_value = "introduction"
-        
+
         agent = MethodologyAgent()
         context = {"submission_id": "test", "content": "Test manuscript"}
         result = await agent.execute_task(context)
@@ -36,13 +36,13 @@ async def test_base_agent_execute_task_complete():
 @pytest.mark.asyncio
 async def test_synthesis_agent_generate_report_complete():
     from app.agents.synthesis_agent import SynthesisAgent
-    
+
     with patch(
         'app.agents.synthesis_agent.langchain_service'
     ) as mock_lc, patch(
         'app.agents.synthesis_agent.apply_review_guardrails'
     ) as mock_guard:
-        
+
         mock_lc.invoke_with_rag = AsyncMock(
             return_value="Initial analysis"
         )
@@ -50,7 +50,7 @@ async def test_synthesis_agent_generate_report_complete():
             return_value="Final report"
         )
         mock_guard.return_value = "Sanitized report"
-        
+
         agent = SynthesisAgent()
         context = {
             "submission": {
@@ -69,13 +69,13 @@ async def test_synthesis_agent_generate_report_complete():
 @pytest.mark.asyncio
 async def test_synthesis_agent_build_prompt():
     from app.agents.synthesis_agent import SynthesisAgent
-    
+
     with patch(
         'app.agents.synthesis_agent.domain_detector'
     ) as mock_detector, patch(
         'app.agents.synthesis_agent.issue_deduplicator'
     ) as mock_dedup:
-        
+
         mock_detector.detect_domain.return_value = {
             "primary_domain": "medical",
             "confidence": 0.9
@@ -95,7 +95,7 @@ async def test_synthesis_agent_build_prompt():
             "moderate": [],
             "minor": []
         }
-        
+
         agent = SynthesisAgent()
         context = {
             "submission": {"title": "Test", "content": "Test"},
@@ -111,7 +111,7 @@ async def test_synthesis_agent_build_prompt():
 @pytest.mark.asyncio
 async def test_langchain_invoke_with_rag():
     from app.services.langchain_service import langchain_service
-    
+
     with patch.object(
         langchain_service, '_validate_and_get_model'
     ) as mock_validate, patch.object(
@@ -121,7 +121,7 @@ async def test_langchain_invoke_with_rag():
     ), patch.object(
         langchain_service, '_invoke_model', return_value="Response"
     ), patch.object(langchain_service, '_cache_response'):
-        
+
         mock_validate.return_value = ("groq", Mock())
         result = await langchain_service.invoke_with_rag("Test prompt")
         assert result == "Response"
@@ -130,7 +130,7 @@ async def test_langchain_invoke_with_rag():
 @pytest.mark.asyncio
 async def test_langchain_domain_aware_review_complete():
     from app.services.langchain_service import langchain_service
-    
+
     with patch.object(
         langchain_service, 'invoke_with_rag', return_value="Domain review"
     ):
@@ -146,7 +146,7 @@ async def test_langchain_domain_aware_review_complete():
 @pytest.mark.asyncio
 async def test_langchain_chain_of_thought():
     from app.services.langchain_service import langchain_service
-    
+
     with patch.object(
         langchain_service, 'invoke_with_rag', return_value="COT analysis"
     ):
@@ -159,7 +159,7 @@ async def test_langchain_chain_of_thought():
 @pytest.mark.asyncio
 async def test_langchain_multi_model_consensus():
     from app.services.langchain_service import langchain_service
-    
+
     with patch.object(
         langchain_service, 'invoke_with_rag', return_value="Consensus"
     ):
@@ -176,7 +176,7 @@ async def test_workflow_create_embeddings_complete():
         langgraph_workflow,
         EnhancedReviewState
     )
-    
+
     state = EnhancedReviewState(
         submission_id="test",
         content="Test",
@@ -192,7 +192,7 @@ async def test_workflow_create_embeddings_complete():
         embeddings_created=False,
         retry_count=0
     )
-    
+
     with patch('app.services.langgraph_workflow.langchain_service') as mock_lc:
         mock_lc.embeddings = True
         mock_lc.create_document_embeddings = AsyncMock()
@@ -206,7 +206,7 @@ async def test_workflow_parallel_reviews_complete():
         langgraph_workflow,
         EnhancedReviewState
     )
-    
+
     state = EnhancedReviewState(
         submission_id="test",
         content="Test content",
@@ -222,7 +222,7 @@ async def test_workflow_parallel_reviews_complete():
         embeddings_created=True,
         retry_count=0
     )
-    
+
     with patch('app.services.langgraph_workflow.langchain_service') as mock_lc:
         mock_lc.domain_aware_review = AsyncMock(
             return_value="Review complete"
@@ -233,7 +233,7 @@ async def test_workflow_parallel_reviews_complete():
         mock_lc.multi_model_consensus = AsyncMock(
             return_value="Consensus"
         )
-        
+
         result = await langgraph_workflow._parallel_reviews(state)
         assert "methodology_critique" in result
 
@@ -244,7 +244,7 @@ async def test_workflow_synthesize_complete():
         langgraph_workflow,
         EnhancedReviewState
     )
-    
+
     state = EnhancedReviewState(
         submission_id="test",
         content="Test",
@@ -276,7 +276,7 @@ async def test_workflow_synthesize_complete():
         embeddings_created=True,
         retry_count=0
     )
-    
+
     with patch(
         'app.services.langgraph_workflow.SynthesisAgent'
     ) as mock_agent:
@@ -285,7 +285,7 @@ async def test_workflow_synthesize_complete():
             return_value="Final report"
         )
         mock_agent.return_value = mock_instance
-        
+
         result = await langgraph_workflow._synthesize_report(state)
         assert result["final_report"] == "Final report"
 
@@ -293,12 +293,12 @@ async def test_workflow_synthesize_complete():
 @pytest.mark.asyncio
 async def test_workflow_execute_review_complete():
     from app.services.langgraph_workflow import langgraph_workflow
-    
+
     submission = {
         "_id": "test", "content": "Test content",
         "title": "Test", "file_metadata": {}
     }
-    
+
     with patch.object(
         langgraph_workflow.workflow,
         'ainvoke',
@@ -312,12 +312,12 @@ async def test_workflow_execute_review_complete():
 @pytest.mark.asyncio
 async def test_groq_provider_complete():
     from app.services.llm_service import GroqProvider
-    
+
     mock_client = Mock()
     mock_response = Mock()
     mock_response.choices = [Mock(message=Mock(content="Response"))]
     mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-    
+
     with patch('groq.AsyncGroq', return_value=mock_client):
         provider = GroqProvider()
         result = await provider.generate_content("Test")
@@ -327,23 +327,23 @@ async def test_groq_provider_complete():
 @pytest.mark.asyncio
 async def test_llm_service_generate_no_cache():
     from app.services.llm_service import llm_service
-    
+
     mock_client = Mock()
     mock_response = Mock()
     mock_response.choices = [Mock(message=Mock(content="New response"))]
     mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-    
+
     with patch(
         'app.services.llm_service.cache_service'
     ) as mock_cache, patch(
         'app.services.llm_service.settings'
     ) as mock_settings, patch('groq.AsyncGroq', return_value=mock_client):
-        
+
         mock_settings.DEFAULT_LLM = "groq"
         mock_settings.GROQ_API_KEY = "test"
         mock_cache.get = AsyncMock(return_value=None)
         mock_cache.set = AsyncMock()
-        
+
         result = await llm_service.generate_content("Test")
         assert isinstance(result, str)
 
@@ -352,7 +352,7 @@ async def test_llm_service_generate_no_cache():
 @pytest.mark.asyncio
 async def test_orchestrator_complete_flow():
     from app.agents.orchestrator import orchestrator
-    
+
     with patch(
         'app.agents.orchestrator.mongodb_service'
     ) as mock_db, patch(
@@ -362,7 +362,7 @@ async def test_orchestrator_complete_flow():
     ) as mock_limiter, patch(
         'app.agents.orchestrator.document_cache_service'
     ) as mock_cache:
-        
+
         mock_db.get_submission = AsyncMock(return_value={
             "_id": "test", "title": "test.pdf", "content": "test"
         })
@@ -373,7 +373,7 @@ async def test_orchestrator_complete_flow():
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
         mock_cache.cache_submission = AsyncMock()
-        
+
         result = await orchestrator.process_submission(
             "test", "127.0.0.1", "UTC"
         )
@@ -383,7 +383,7 @@ async def test_orchestrator_complete_flow():
 @pytest.mark.asyncio
 async def test_orchestrator_error_handling():
     from app.agents.orchestrator import orchestrator
-    
+
     with patch(
         'app.agents.orchestrator.mongodb_service'
     ) as mock_db, patch(
@@ -391,7 +391,7 @@ async def test_orchestrator_error_handling():
     ) as mock_workflow, patch(
         'app.agents.orchestrator.rate_limiter'
     ) as mock_limiter:
-        
+
         mock_db.get_submission = AsyncMock(return_value={
             "_id": "test", "title": "test", "content": "test"
         })
@@ -401,7 +401,7 @@ async def test_orchestrator_error_handling():
         )
         mock_limiter.check_concurrent_processing = Mock()
         mock_limiter.release_processing = Mock()
-        
+
         with pytest.raises(Exception):
             await orchestrator.process_submission("test")
 

@@ -23,9 +23,7 @@ class ManuscriptAnalyzer:
                 compiled = re.compile(pattern)
                 self.compiled_section_patterns.append((name, compiled))
             except re.error as e:
-                logger.warning(
-                    "Invalid regex pattern in section_patterns: %s (%s)", pattern, e
-                )
+                logger.warning("Invalid regex pattern in section_patterns: %s (%s)", pattern, e)
 
     def _detect_section_header(self, stripped: str) -> Optional[str]:
         """Return the section name if the stripped line matches a header, otherwise None."""
@@ -36,9 +34,7 @@ class ManuscriptAnalyzer:
                 return section_name
         return None
 
-    def _ensure_section(
-        self, sections: Dict[str, Dict], section_name: str, line_num: int
-    ) -> None:
+    def _ensure_section(self, sections: Dict[str, Dict], section_name: str, line_num: int) -> None:
         """Ensure a section entry exists in sections with initial metadata."""
         if section_name not in sections:
             sections[section_name] = {
