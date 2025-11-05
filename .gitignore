@@ -3,6 +3,7 @@ __pycache__/
 .env
 .env.production
 .env.prod
+.env.test
 reviews
 .history
 .ipynb_checkpoints
@@ -47,3 +48,5 @@ coverage.json
 run_coverage.py
 run_coverage.sh
 coverage.sh
+
+commit_error.txt

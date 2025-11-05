@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
+import UploadForm from '../components/UploadForm';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -100,7 +101,7 @@ const AdminDashboard = () => {
   const resetPassword = async (e) => {
     e.preventDefault();
     if (!window.confirm(`Reset password for ${resetPasswordData.identifier}?`)) return;
-    
+
     try {
       await axios.post('/api/v1/admin/users/reset-password', resetPasswordData);
       alert('Password reset successfully');
@@ -172,7 +173,6 @@ const AdminDashboard = () => {
         </div>
         <div className="header-actions">
           <span className="user-info">👤 {user?.name || user?.email}</span>
-          <button onClick={() => navigate('/')} className="refresh-btn">🏠 Home</button>
           <button onClick={loadDashboardData} className="refresh-btn">🔄 Refresh</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
@@ -212,12 +212,7 @@ const AdminDashboard = () => {
 
       {activeTab === 'upload' && (
         <div className="upload-section">
-          <h2>Upload Manuscript</h2>
-          <iframe 
-            src="/" 
-            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
-            title="Upload Manuscript"
-          />
+          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); loadDashboardData(); }} />
         </div>
       )}
 
@@ -347,11 +342,11 @@ const AdminDashboard = () => {
                     <button onClick={() => toggleUserStatus(user._id, user.is_active)} className="action-btn">
                       {user.is_active ? '🚫 Deactivate' : '✅ Activate'}
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
                         setResetPasswordData({ identifier: user.email, new_password: '' });
                         setShowResetPassword(true);
-                      }} 
+                      }}
                       className="action-btn"
                       title="Reset password"
                     >
@@ -392,20 +387,19 @@ const AdminDashboard = () => {
                   <td>{new Date(sub.created_at).toLocaleDateString()}</td>
                   <td>{sub.completed_at ? new Date(sub.completed_at).toLocaleDateString() : 'N/A'}</td>
                   <td>
-                    <button 
-                      onClick={() => downloadFile(`/api/v1/downloads/manuscripts/${sub._id}`, sub.title)} 
+                    <button
+                      onClick={() => downloadFile(`/api/v1/downloads/manuscripts/${sub._id}`, sub.title)}
                       className="action-btn"
                       title="Download original manuscript"
                     >
                       📄 Manuscript
                     </button>
                     {sub.status === 'completed' && (
-                      <button 
+                      <button
                         onClick={() => {
                           const baseName = sub.title.replace(/\.[^/.]+$/, '');
-                          const ext = sub.title.match(/\.[^/.]+$/)?.[0] || '.pdf';
-                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed${ext}`);
-                        }} 
+                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed.pdf`);
+                        }}
                         className="action-btn"
                         title="Download review PDF"
                       >

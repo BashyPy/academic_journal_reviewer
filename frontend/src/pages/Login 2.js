@@ -75,7 +75,10 @@ const Login = () => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>🔐 Login to AARIS</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ margin: 0 }}>🔐 Login to AARIS</h2>
+          <button onClick={() => navigate('/')} className="btn-home" style={{ padding: '8px 16px', cursor: 'pointer' }}>🏠 Home</button>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email or Username</label>

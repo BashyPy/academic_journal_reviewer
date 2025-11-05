@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -7,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.admin_dashboard_routes import router as admin_dashboard_router
-from app.api.admin_routes import router as admin_router
 from app.api.admin_user_routes import router as admin_user_router
 from app.api.auth_routes import router as auth_router
 from app.api.author_dashboard_routes import router as author_dashboard_router
@@ -20,6 +20,9 @@ from app.api.routes import router
 from app.api.super_admin_routes import router as super_admin_router
 from app.middleware.rate_limiter import rate_limit_middleware
 from app.middleware.waf import waf_middleware
+from app.services.disclaimer_service import disclaimer_service
+from app.services.init_admin import create_default_admin
+from app.services.otp_cleanup_service import otp_cleanup_service
 from app.services.security_monitor import security_monitor
 from app.utils.logger import get_logger
 
@@ -40,10 +43,23 @@ rate_limit_storage = defaultdict(list)
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize default admin on startup"""
-    from app.services.init_admin import create_default_admin
-
+    """Initialize default admin and start background tasks on startup"""
     await create_default_admin()
+
+    # Start OTP cleanup background task
+    _ = asyncio.create_task(otp_cleanup_background_task())
+
+
+async def otp_cleanup_background_task():
+    """Background task to clean up expired OTPs every hour"""
+    while True:
+        try:
+            await otp_cleanup_service.cleanup_expired_otps()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(f"OTP cleanup task failed: {e}")
+
+        # Wait 1 hour before next cleanup
+        await asyncio.sleep(3600)
 
 
 # Apply security middleware in order: WAF -> Rate Limiting
@@ -121,9 +137,10 @@ async def security_middleware(request: Request, call_next):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:"
-        )
+        # Content Security Policy
+        csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        csp += "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:"
+        response.headers["Content-Security-Policy"] = csp
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Log response
@@ -181,7 +198,7 @@ app.include_router(router, prefix=API_V1_PREFIX)
 app.include_router(cache_router)
 app.include_router(auth_router, prefix=API_V1_PREFIX)
 app.include_router(roles_router, prefix=API_V1_PREFIX)
-app.include_router(admin_router, prefix=API_V1_PREFIX)
+
 app.include_router(admin_dashboard_router, prefix=API_V1_PREFIX)
 app.include_router(admin_user_router, prefix=API_V1_PREFIX)
 app.include_router(author_dashboard_router, prefix=API_V1_PREFIX)
@@ -209,13 +226,11 @@ async def health_check():
 @app.get("/disclaimer")
 async def get_disclaimer():
     try:
-        from app.services.disclaimer_service import disclaimer_service
-
         return {
             "system_disclaimer": disclaimer_service.get_system_disclaimer(),
             **disclaimer_service.get_api_disclaimer(),
         }
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(e, additional_info={"endpoint": "disclaimer"})
         return {
             "system_disclaimer": "Human oversight required for all AI-generated reviews.",

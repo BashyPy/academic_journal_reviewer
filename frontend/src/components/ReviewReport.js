@@ -15,7 +15,7 @@ const ReviewReport = ({ submissionId }) => {
           axios.get(`/api/v1/submissions/${submissionId}/report`)
         );
         const data = response.data;
-        
+
         if (data.processing) {
           setProcessing(true);
           setReport(null);
@@ -34,13 +34,13 @@ const ReviewReport = ({ submissionId }) => {
 
     if (submissionId) {
       fetchReport();
-      
+
       const interval = setInterval(() => {
         if (processing || !report) {
           fetchReport();
         }
       }, 10000);
-      
+
       return () => clearInterval(interval);
     }
   }, [submissionId, processing, report]);
@@ -53,7 +53,14 @@ const ReviewReport = ({ submissionId }) => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${report.title}_reviewed.pdf`);
+
+      // Strip original extension and ensure PDF extension
+      let baseTitle = report.title;
+      if (baseTitle.includes('.')) {
+        baseTitle = baseTitle.substring(0, baseTitle.lastIndexOf('.'));
+      }
+      link.setAttribute('download', `${baseTitle}_reviewed.pdf`);
+
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -148,7 +155,7 @@ const ReviewReport = ({ submissionId }) => {
       </div>
     );
   }
-  
+
   if (processing) {
     return (
       <div className="report-container">
@@ -171,7 +178,7 @@ const ReviewReport = ({ submissionId }) => {
       </div>
     );
   }
-  
+
   if (error) {
     return (
       <div className="report-container">
@@ -194,17 +201,17 @@ const ReviewReport = ({ submissionId }) => {
           </p>
         )}
       </div>
-      
+
       <div className="report-content">
         {renderMarkdownElements(report.final_report)}
       </div>
-      
+
       <div className="report-actions">
         <button className="download-button" onClick={downloadPDF}>
           📄 Download PDF Report
         </button>
       </div>
-      
+
       {report.disclaimer && (
         <div className="disclaimer">
           <h4>⚠️ Important Disclaimer</h4>

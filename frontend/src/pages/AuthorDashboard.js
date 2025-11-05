@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
+import UploadForm from '../components/UploadForm';
 import './AuthorDashboard.css';
 
 const AuthorDashboard = () => {
@@ -77,7 +78,7 @@ const AuthorDashboard = () => {
   };
 
   const formatDuration = (ms) => {
-    if (!ms) return 'N/A';
+    if (!ms || ms === 0 || isNaN(ms)) return '0m 0s';
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}m ${seconds}s`;
@@ -101,7 +102,6 @@ const AuthorDashboard = () => {
         </div>
         <div className="user-info">
           <span>👤 {user?.name || user?.email}</span>
-          <button onClick={() => navigate('/')} className="btn-home">🏠 Home</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </div>
@@ -115,11 +115,7 @@ const AuthorDashboard = () => {
 
       {activeTab === 'upload' && (
         <div className="upload-tab">
-          <iframe 
-            src="/" 
-            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
-            title="Upload Manuscript"
-          />
+          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); fetchDashboardData(); }} />
         </div>
       )}
 
@@ -217,20 +213,19 @@ const AuthorDashboard = () => {
                     {sub.completed_at && <p><strong>Completed:</strong> {formatDate(sub.completed_at)}</p>}
                   </div>
                   <div className="submission-actions">
-                    <button 
-                      onClick={() => downloadFile(`/api/v1/downloads/manuscripts/${sub._id}`, sub.title)} 
+                    <button
+                      onClick={() => downloadFile(`/api/v1/downloads/manuscripts/${sub._id}`, sub.title)}
                       className="btn-download"
                       title="Download original manuscript"
                     >
                       📄 Manuscript
                     </button>
                     {sub.status === 'completed' && (
-                      <button 
+                      <button
                         onClick={() => {
                           const baseName = sub.title.replace(/\.[^/.]+$/, '');
-                          const ext = sub.title.match(/\.[^/.]+$/)?.[0] || '.pdf';
-                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed${ext}`);
-                        }} 
+                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed.pdf`);
+                        }}
                         className="btn-download"
                         title="Download review PDF"
                       >

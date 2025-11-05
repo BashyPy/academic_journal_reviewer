@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.middleware.dual_auth import get_current_user
 from app.models.roles import UserRole
 from app.services.mongodb_service import mongodb_service
+from app.utils.common_operations import get_submission_with_downloads
 from app.utils.logger import get_logger
 
 router = APIRouter(prefix="/reviewer", tags=["reviewer-dashboard"])
@@ -32,7 +33,7 @@ def require_reviewer(user: dict = Depends(get_current_user)):
 async def get_reviewer_stats(user: dict = Depends(require_reviewer)):
     """Get reviewer-specific statistics"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     # Count assignments
     total_assigned = await db.review_assignments.count_documents({"reviewer_id": reviewer_id})
@@ -80,7 +81,7 @@ async def get_reviewer_assignments(
 ):
     """Get reviewer's assigned manuscripts"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     query = {"reviewer_id": reviewer_id}
     if status:
@@ -111,7 +112,7 @@ async def get_reviewer_assignments(
 async def get_assignment_detail(assignment_id: str, user: dict = Depends(require_reviewer)):
     """Get detailed assignment information with manuscript content"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     assignment = await db.review_assignments.find_one(
         {"_id": ObjectId(assignment_id), "reviewer_id": reviewer_id}
@@ -126,18 +127,9 @@ async def get_assignment_detail(assignment_id: str, user: dict = Depends(require
     # Get submission details
     submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
     if submission:
-        submission["_id"] = str(submission["_id"])
-        assignment["submission"] = submission
-
-        # Add download URLs
-        assignment["download_urls"] = {
-            "manuscript": f"/api/v1/downloads/manuscripts/{submission_id}",
-            "review": (
-                f"/api/v1/downloads/reviews/{submission_id}"
-                if submission.get("status") == "completed"
-                else None
-            ),
-        }
+        submission_with_urls = await get_submission_with_downloads(submission_id)
+        assignment["submission"] = submission_with_urls
+        assignment["download_urls"] = submission_with_urls["download_urls"]
 
     return assignment
 
@@ -146,10 +138,14 @@ async def get_assignment_detail(assignment_id: str, user: dict = Depends(require
 async def start_review(assignment_id: str, user: dict = Depends(require_reviewer)):
     """Mark review as started"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     result = await db.review_assignments.update_one(
-        {"_id": ObjectId(assignment_id), "reviewer_id": reviewer_id, "status": "pending"},
+        {
+            "_id": ObjectId(assignment_id),
+            "reviewer_id": reviewer_id,
+            "status": "pending",
+        },
         {"$set": {"status": "in_progress", "started_at": datetime.now()}},
     )
 
@@ -165,7 +161,7 @@ async def submit_review(
 ):
     """Submit completed review"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     # Validate assignment
     assignment = await db.review_assignments.find_one(
@@ -204,10 +200,14 @@ async def update_review(
 ):
     """Update an existing review (before final submission)"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     result = await db.review_assignments.update_one(
-        {"_id": ObjectId(assignment_id), "reviewer_id": reviewer_id, "status": "in_progress"},
+        {
+            "_id": ObjectId(assignment_id),
+            "reviewer_id": reviewer_id,
+            "status": "in_progress",
+        },
         {"$set": {"review": review_data, "last_updated": datetime.now()}},
     )
 
@@ -224,7 +224,7 @@ async def get_review_timeline(
 ):
     """Get review completion timeline"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
     start_date = datetime.now() - timedelta(days=days)
 
     pipeline = [
@@ -246,7 +246,7 @@ async def get_review_timeline(
 async def get_review_domains(user: dict = Depends(require_reviewer)):
     """Get distribution of reviewed domains"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     # Get all assignments
     assignments = await db.review_assignments.find({"reviewer_id": reviewer_id}).to_list(
@@ -271,7 +271,7 @@ async def get_review_domains(user: dict = Depends(require_reviewer)):
 async def get_reviewer_performance(user: dict = Depends(require_reviewer)):
     """Get reviewer performance metrics"""
     db = await mongodb_service.get_database()
-    reviewer_id = user.get("user_id")
+    reviewer_id = str(user["_id"])
 
     pipeline = [
         {
@@ -293,4 +293,8 @@ async def get_reviewer_performance(user: dict = Depends(require_reviewer)):
     ]
 
     result = await db.review_assignments.aggregate(pipeline).to_list(length=1)
-    return {"performance": result[0] if result else {}}
+    return {
+        "performance": (
+            result[0] if result else {"avg_time_ms": 0, "min_time_ms": 0, "max_time_ms": 0}
+        )
+    }

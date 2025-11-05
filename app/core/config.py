@@ -12,21 +12,43 @@ load_dotenv()
 logger = get_logger(__name__)
 
 
-class Settings:
+class Settings:  # pylint: disable=too-many-instance-attributes,too-few-public-methods
     def __init__(self):
         # Secure configuration loading with validation
         # Use the centralized default constant
-        self.MONGODB_URL = self._validate_mongodb_url(os.getenv("MONGODB_URL"))
-        self.MONGODB_DATABASE = self._validate_database_name(os.getenv("MONGODB_DATABASE", "aaris"))
+        self.MONGODB_URL = self._validate_mongodb_url(
+            os.getenv("MONGODB_URL")
+        )  # pylint: disable=invalid-name
+        # Use test database when running tests (override .env setting)
+        if os.getenv("TESTING") == "true":
+            self.MONGODB_DATABASE = self._validate_database_name(
+                "aaris_test"
+            )  # pylint: disable=invalid-name
+        else:
+            self.MONGODB_DATABASE = self._validate_database_name(  # pylint: disable=invalid-name
+                os.getenv("MONGODB_DATABASE", "aaris")
+            )
 
-        self.DEFAULT_LLM = self._validate_llm_provider(os.getenv("DEFAULT_LLM", "groq"))
-        self.GROQ_API_KEY = self._validate_api_key(os.getenv("GROQ_API_KEY"))
-        self.OPENAI_API_KEY = self._validate_api_key(os.getenv("OPENAI_API_KEY"))
-        self.GEMINI_API_KEY = self._validate_api_key(os.getenv("GEMINI_API_KEY"))
-        self.ANTHROPIC_API_KEY = self._validate_api_key(os.getenv("ANTHROPIC_API_KEY"))
+        self.DEFAULT_LLM = self._validate_llm_provider(
+            os.getenv("DEFAULT_LLM", "groq")
+        )  # pylint: disable=invalid-name
+        self.GROQ_API_KEY = self._validate_api_key(
+            os.getenv("GROQ_API_KEY")
+        )  # pylint: disable=invalid-name
+        self.OPENAI_API_KEY = self._validate_api_key(
+            os.getenv("OPENAI_API_KEY")
+        )  # pylint: disable=invalid-name
+        self.GEMINI_API_KEY = self._validate_api_key(
+            os.getenv("GEMINI_API_KEY")
+        )  # pylint: disable=invalid-name
+        self.ANTHROPIC_API_KEY = self._validate_api_key(
+            os.getenv("ANTHROPIC_API_KEY")
+        )  # pylint: disable=invalid-name
 
-        self.APP_ID = self._validate_app_id(os.getenv("APP_ID", "aaris-app"))
-        self.JWT_SECRET = os.getenv(
+        self.APP_ID = self._validate_app_id(
+            os.getenv("APP_ID", "aaris-app")
+        )  # pylint: disable=invalid-name
+        self.JWT_SECRET = os.getenv(  # pylint: disable=invalid-name
             "JWT_SECRET", "change-this-secret-in-production-use-strong-random-key"
         )
 
@@ -47,7 +69,7 @@ class Settings:
         except re.error:
             logger.exception("Regex error validating MONGODB_URL, using default URI.")
             return ""
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Unexpected error validating MONGODB_URL, using default URI.")
             return ""
 
@@ -67,7 +89,7 @@ class Settings:
         except re.error:
             logger.exception("Regex error validating MONGODB_DATABASE, falling back to 'aaris'.")
             return "aaris"
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception(
                 "Unexpected error validating MONGODB_DATABASE, falling back to 'aaris'."
             )
@@ -79,7 +101,7 @@ class Settings:
             valid_providers = {"openai", "anthropic", "gemini", "groq"}
             if provider and provider.lower() in valid_providers:
                 return provider.lower()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Unexpected error validating DEFAULT_LLM, falling back to 'groq'.")
         return "groq"
 
@@ -100,7 +122,7 @@ class Settings:
         except re.error:
             logger.exception("Regex error validating API key, dropping key.")
             return None
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Unexpected error validating API key, dropping key.")
             return None
 
@@ -120,7 +142,7 @@ class Settings:
         except re.error:
             logger.exception("Regex error validating APP_ID, falling back to 'aaris-app'.")
             return "aaris-app"
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Unexpected error validating APP_ID, falling back to 'aaris-app'.")
             return "aaris-app"
 

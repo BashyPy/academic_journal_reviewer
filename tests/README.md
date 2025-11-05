@@ -3,6 +3,17 @@
 ## Overview
 Comprehensive test suite achieving **47% code coverage** with focus on critical paths: agents, workflows, and core services.
 
+## ⚠️ Test Database Isolation
+
+**IMPORTANT**: Tests automatically use a separate database (`aaris_test`) to prevent production data contamination.
+
+- **Production DB**: `aaris`
+- **Test DB**: `aaris_test`
+- **Auto-configured**: Set via `TESTING=true` environment variable
+- **Safe by default**: MongoDB service mocked in test client
+
+See [TEST_ISOLATION_QUICK_REFERENCE.md](../docs/TEST_ISOLATION_QUICK_REFERENCE.md) for details.
+
 ## Test Files
 
 ### Core Test Files (Run These)
@@ -16,7 +27,7 @@ Comprehensive test suite achieving **47% code coverage** with focus on critical 
 
 #### 2. `test_agents.py`
 **Purpose**: Agent system tests
-**Coverage**: 
+**Coverage**:
 - Specialist agents: 100%
 - Base agent: 34%
 - Agent prompts and parsing
@@ -117,6 +128,13 @@ Comprehensive test suite achieving **47% code coverage** with focus on critical 
 ```bash
 source .venv/bin/activate
 pytest tests/ -v
+# Automatically uses aaris_test database
+```
+
+### Clear Test Database
+```bash
+# Safe cleanup of test data
+python tests/clear_test_db.py
 ```
 
 ### Run All Passing Tests Only

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
-import UploadForm from '../components/UploadForm';
 import './SuperAdminDashboard.css';
 
 const SuperAdminDashboard = () => {
@@ -238,6 +237,7 @@ const SuperAdminDashboard = () => {
         </div>
         <div className="header-actions">
           <span className="user-info">👤 {user?.name || user?.email}</span>
+          <button onClick={() => navigate('/')} className="refresh-btn">🏠 Home</button>
           <button onClick={loadDashboardData} className="refresh-btn">🔄 Refresh</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
@@ -283,7 +283,12 @@ const SuperAdminDashboard = () => {
 
       {activeTab === 'upload' && (
         <div className="upload-section">
-          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); loadDashboardData(); }} />
+          <h2>Upload Manuscript</h2>
+          <iframe
+            src="/"
+            style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
+            title="Upload Manuscript"
+          />
         </div>
       )}
 
@@ -568,7 +573,8 @@ const SuperAdminDashboard = () => {
                       <button
                         onClick={() => {
                           const baseName = sub.title.replace(/\.[^/.]+$/, '');
-                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed.pdf`);
+                          const ext = sub.title.match(/\.[^/.]+$/)?.[0] || '.pdf';
+                          downloadFile(`/api/v1/downloads/reviews/${sub._id}`, `${baseName}_Reviewed${ext}`);
                         }}
                         className="action-btn"
                         title="Download review PDF"
@@ -690,15 +696,15 @@ const SuperAdminDashboard = () => {
           <div className="stats-grid">
             <div className="stat-card">
               <h3>Average Processing Time</h3>
-              <p className="stat-value">{((performance.avg_time_ms || 0) / 1000 / 60).toFixed(2)} min</p>
+              <p className="stat-value">{(performance.avg_time_ms / 1000 / 60).toFixed(2)} min</p>
             </div>
             <div className="stat-card">
               <h3>Fastest Processing</h3>
-              <p className="stat-value">{((performance.min_time_ms || 0) / 1000 / 60).toFixed(2)} min</p>
+              <p className="stat-value">{(performance.min_time_ms / 1000 / 60).toFixed(2)} min</p>
             </div>
             <div className="stat-card">
               <h3>Slowest Processing</h3>
-              <p className="stat-value">{((performance.max_time_ms || 0) / 1000 / 60).toFixed(2)} min</p>
+              <p className="stat-value">{(performance.max_time_ms / 1000 / 60).toFixed(2)} min</p>
             </div>
           </div>
         </div>

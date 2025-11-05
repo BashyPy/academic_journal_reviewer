@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Up
 from fastapi.responses import StreamingResponse
 
 from app.agents.orchestrator import orchestrator
-from app.middleware.auth import get_api_key
+from app.middleware.dual_auth import get_current_user
 from app.models.responses import ReportResponse, SubmissionResponse, UploadResponse
 from app.models.schemas import TaskStatus
 from app.services.audit_logger import audit_logger
@@ -155,7 +155,7 @@ async def _read_and_validate_content(upload_file: UploadFile, ext: str, raw_file
     return content, content_type
 
 
-async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezone: str):
+async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezone: str, user: dict):
     """Internal helper that performs validation, parsing, persistence, caching and starts background processing."""
     # Basic presence check and sanitize filename
     if not file or not getattr(file, "filename", None):
@@ -207,7 +207,8 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
         },
         "status": TaskStatus.PENDING.value,
         "created_at": datetime.now(timezone.utc),
-        "user_id": user.get("user_id"),  # Track submission owner
+        "user_id": str(user["_id"]),  # Track submission owner
+        "user_email": user.get("email"),  # Track user email for reference
     }
 
     # Apply full rate limiting for new submissions
@@ -218,7 +219,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     submission_id = await mongodb_service.save_submission(submission_data)
 
     # Audit log submission
-    await audit_logger.log_submission(submission_id, user.get("name", "unknown"), client_ip)
+    await audit_logger.log_submission(submission_id, str(user["_id"]), user["email"], client_ip)
 
     # Cache the submission for future identical uploads
     await document_cache_service.cache_submission(
@@ -278,12 +279,12 @@ async def upload_manuscript(
         default="UTC",
         description="Client timezone (e.g., 'America/New_York', 'Europe/London')",
     ),
-    user: dict = Depends(get_api_key),
+    user: dict = Depends(get_current_user),
 ):
     """Thin wrapper that delegates heavy work to an internal helper to reduce coupling and improve testability."""
     client_ip = request.client.host if request.client else "unknown"
     try:
-        return await _process_upload_manuscript(file, client_ip, x_timezone)
+        return await _process_upload_manuscript(file, client_ip, x_timezone, user)
     except HTTPException:
         raise
     except Exception as e:
@@ -562,15 +563,11 @@ def _parse_and_convert_completed_at(completed_at_raw, x_timezone: str, submissio
 
 def _build_report_filename(submission: dict) -> str:
     """Create a safe filename for the reviewed PDF based on submission metadata."""
-    original_filename = submission.get("file_metadata", {}).get(
-        "original_filename", submission.get("title", "manuscript")
+    from app.utils.common_operations import (  # pylint: disable=import-outside-toplevel
+        generate_filename_base,
     )
-    # Remove extension if present
-    if "." in original_filename:
-        base_name = original_filename.rsplit(".", 1)[0]
-    else:
-        base_name = original_filename
-    # Keep only alphanumeric and a small set of safe extra characters
+
+    base_name = generate_filename_base(submission)
     allowed_extra_chars = {" ", "-", "_"}
     filtered_chars = (ch for ch in base_name if ch.isalnum() or ch in allowed_extra_chars)
     safe_name = "".join(filtered_chars).rstrip() or "manuscript"

@@ -1,19 +1,19 @@
 """Tests for Editor Dashboard functionality"""
 
-import pytest
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi import HTTPException
 
 from app.api.editor_dashboard_routes import (
+    get_domain_distribution,
     get_editor_stats,
-    list_all_submissions,
+    get_review_performance,
+    get_submission_analytics,
     get_submission_details,
+    list_all_submissions,
     make_editorial_decision,
     reprocess_submission,
-    get_submission_analytics,
-    get_domain_distribution,
-    get_review_performance,
 )
 from app.models.roles import UserRole
 
@@ -43,7 +43,9 @@ async def test_get_editor_stats(mock_editor_user, mock_db):
     """Test getting editor dashboard statistics"""
     mock_db.submissions.count_documents = AsyncMock(side_effect=[150, 12, 8, 125, 5, 3, 18])
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         stats = await get_editor_stats(mock_editor_user)
 
     assert stats["total_submissions"] == 150
@@ -72,7 +74,9 @@ async def test_list_all_submissions(mock_editor_user, mock_db):
     mock_db.submissions.find = MagicMock(return_value=mock_cursor)
     mock_db.submissions.count_documents = AsyncMock(return_value=2)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         result = await list_all_submissions(mock_editor_user, skip=0, limit=50)
 
     assert len(result["submissions"]) == 2
@@ -99,7 +103,9 @@ async def test_get_submission_details(mock_editor_user, mock_db):
     mock_cursor.to_list = AsyncMock(return_value=mock_tasks)
     mock_db.agent_tasks.find = MagicMock(return_value=mock_cursor)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         result = await get_submission_details("sub123", mock_editor_user)
 
     assert result["_id"] == "sub123"
@@ -112,7 +118,9 @@ async def test_get_submission_details_not_found(mock_editor_user, mock_db):
     """Test getting non-existent submission"""
     mock_db.submissions.find_one = AsyncMock(return_value=None)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await get_submission_details("nonexistent", mock_editor_user)
 
@@ -134,8 +142,12 @@ async def test_make_editorial_decision(mock_editor_user, mock_db):
         notify_author=True,
     )
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
-        with patch("app.api.editor_dashboard_routes.audit_logger.log_event", new_callable=AsyncMock):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
+        with patch(
+            "app.api.editor_dashboard_routes.audit_logger.log_event", new_callable=AsyncMock
+        ):
             result = await make_editorial_decision("sub123", decision, mock_editor_user)
 
     assert result["message"] == "Editorial decision recorded"
@@ -151,8 +163,12 @@ async def test_reprocess_submission(mock_editor_user, mock_db):
     mock_db.submissions.find_one = AsyncMock(return_value=mock_submission)
     mock_db.submissions.update_one = AsyncMock()
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
-        with patch("app.api.editor_dashboard_routes.audit_logger.log_event", new_callable=AsyncMock):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
+        with patch(
+            "app.api.editor_dashboard_routes.audit_logger.log_event", new_callable=AsyncMock
+        ):
             result = await reprocess_submission("sub123", mock_editor_user)
 
     assert result["message"] == "Submission queued for reprocessing"
@@ -170,7 +186,9 @@ async def test_get_submission_analytics(mock_editor_user, mock_db):
     mock_cursor.to_list = AsyncMock(return_value=mock_analytics)
     mock_db.submissions.aggregate = MagicMock(return_value=mock_cursor)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         result = await get_submission_analytics(mock_editor_user, days=30)
 
     assert len(result["analytics"]) == 2
@@ -190,7 +208,9 @@ async def test_get_domain_distribution(mock_editor_user, mock_db):
     mock_cursor.to_list = AsyncMock(return_value=mock_domains)
     mock_db.submissions.aggregate = MagicMock(return_value=mock_cursor)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         result = await get_domain_distribution(mock_editor_user)
 
     assert len(result["domains"]) == 3
@@ -215,7 +235,9 @@ async def test_get_review_performance(mock_editor_user, mock_db):
     mock_cursor.to_list = AsyncMock(return_value=mock_performance)
     mock_db.submissions.aggregate = MagicMock(return_value=mock_cursor)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
         result = await get_review_performance(mock_editor_user)
 
     assert result["performance"]["avg_time_ms"] == 180000
@@ -292,8 +314,10 @@ async def test_filtering_by_status(mock_editor_user, mock_db):
     mock_db.submissions.find = MagicMock(return_value=mock_cursor)
     mock_db.submissions.count_documents = AsyncMock(return_value=1)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
-        _result = await list_all_submissions(
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
+        await list_all_submissions(
             mock_editor_user,
             skip=0,
             limit=50,
@@ -321,8 +345,10 @@ async def test_filtering_by_domain(mock_editor_user, mock_db):
     mock_db.submissions.find = MagicMock(return_value=mock_cursor)
     mock_db.submissions.count_documents = AsyncMock(return_value=1)
 
-    with patch("app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db):
-        result = await list_all_submissions(
+    with patch(
+        "app.api.editor_dashboard_routes.mongodb_service.get_database", return_value=mock_db
+    ):
+        await list_all_submissions(
             mock_editor_user,
             skip=0,
             limit=50,

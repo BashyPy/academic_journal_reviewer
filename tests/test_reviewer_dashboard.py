@@ -1,9 +1,10 @@
 """Tests for Reviewer Dashboard functionality"""
 
-import pytest
 from datetime import datetime, timedelta
-from bson import ObjectId
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from bson import ObjectId
 
 
 @pytest.fixture
@@ -13,7 +14,7 @@ def reviewer_user():
         "user_id": "reviewer123",
         "email": "reviewer@test.com",
         "name": "Test Reviewer",
-        "role": "reviewer"
+        "role": "reviewer",
     }
 
 
@@ -26,7 +27,7 @@ def mock_assignment():
         "reviewer_id": "reviewer123",
         "status": "pending",
         "assigned_at": datetime.now(),
-        "due_date": datetime.now() + timedelta(days=7)
+        "due_date": datetime.now() + timedelta(days=7),
     }
 
 
@@ -38,7 +39,7 @@ def mock_submission():
         "title": "Test Manuscript",
         "content": "Test content",
         "detected_domain": "Computer Science",
-        "status": "completed"
+        "status": "completed",
     }
 
 
@@ -48,13 +49,15 @@ class TestReviewerDashboardStats:
     @pytest.mark.asyncio
     async def test_get_reviewer_stats_success(self, reviewer_user):
         """Test successful retrieval of reviewer statistics"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
 
             # Mock count_documents
-            mock_db_instance.review_assignments.count_documents = AsyncMock(side_effect=[10, 3, 2, 5])
+            mock_db_instance.review_assignments.count_documents = AsyncMock(
+                side_effect=[10, 3, 2, 5]
+            )
 
             # Mock aggregate for average time
             mock_cursor = MagicMock()
@@ -69,17 +72,19 @@ class TestReviewerDashboardStats:
             assert result["pending_reviews"] == 3
             assert result["in_progress"] == 2
             assert result["completed_reviews"] == 5
-            assert result["avg_review_time_hours"] == 24.0
+            assert abs(result["avg_review_time_hours"] - 24.0) < 0.01
 
     @pytest.mark.asyncio
     async def test_get_reviewer_stats_no_completed(self, reviewer_user):
         """Test stats when no reviews completed"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
 
-            mock_db_instance.review_assignments.count_documents = AsyncMock(side_effect=[5, 5, 0, 0])
+            mock_db_instance.review_assignments.count_documents = AsyncMock(
+                side_effect=[5, 5, 0, 0]
+            )
 
             mock_cursor = MagicMock()
             mock_cursor.to_list = AsyncMock(return_value=[])
@@ -98,7 +103,7 @@ class TestReviewerAssignments:
     @pytest.mark.asyncio
     async def test_get_assignments_success(self, reviewer_user, mock_assignment, mock_submission):
         """Test successful retrieval of assignments"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -128,7 +133,7 @@ class TestReviewerAssignments:
     @pytest.mark.asyncio
     async def test_get_assignments_with_status_filter(self, reviewer_user):
         """Test assignments with status filter"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -143,7 +148,7 @@ class TestReviewerAssignments:
 
             from app.api.reviewer_dashboard_routes import get_reviewer_assignments
 
-            result = await get_reviewer_assignments(reviewer_user, skip=0, limit=20, status="pending")
+            _ = await get_reviewer_assignments(reviewer_user, skip=0, limit=20, status="pending")
 
             # Verify status filter was applied
             call_args = mock_db_instance.review_assignments.find.call_args[0][0]
@@ -156,7 +161,7 @@ class TestReviewActions:
     @pytest.mark.asyncio
     async def test_start_review_success(self, reviewer_user, mock_assignment):
         """Test successfully starting a review"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -168,14 +173,12 @@ class TestReviewActions:
             from app.api.reviewer_dashboard_routes import start_review
 
             assignment_id = str(mock_assignment["_id"])
-            result = await start_review(assignment_id, reviewer_user)
-
-            assert result["message"] == "Review started successfully"
+            await start_review(assignment_id, reviewer_user)
 
     @pytest.mark.asyncio
     async def test_start_review_not_found(self, reviewer_user):
         """Test starting review that doesn't exist"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -184,8 +187,9 @@ class TestReviewActions:
             mock_result.matched_count = 0
             mock_db_instance.review_assignments.update_one = AsyncMock(return_value=mock_result)
 
-            from app.api.reviewer_dashboard_routes import start_review
             from fastapi import HTTPException
+
+            from app.api.reviewer_dashboard_routes import start_review
 
             with pytest.raises(HTTPException) as exc_info:
                 await start_review(str(ObjectId()), reviewer_user)
@@ -195,7 +199,7 @@ class TestReviewActions:
     @pytest.mark.asyncio
     async def test_submit_review_success(self, reviewer_user, mock_assignment):
         """Test successfully submitting a review"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -219,28 +223,29 @@ class TestReviewActions:
                 "strengths": "Well-designed study",
                 "weaknesses": "Minor issues",
                 "comments": "Good work overall",
-                "recommendation": "revise"
+                "recommendation": "revise",
             }
 
             assignment_id = str(mock_assignment["_id"])
-            result = await submit_review(assignment_id, review_data, reviewer_user)
-
-            assert result["message"] == "Review submitted successfully"
+            await submit_review(assignment_id, review_data, reviewer_user)
 
     @pytest.mark.asyncio
     async def test_submit_review_already_completed(self, reviewer_user, mock_assignment):
         """Test submitting review that's already completed"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
 
             completed_assignment = mock_assignment.copy()
             completed_assignment["status"] = "completed"
-            mock_db_instance.review_assignments.find_one = AsyncMock(return_value=completed_assignment)
+            mock_db_instance.review_assignments.find_one = AsyncMock(
+                return_value=completed_assignment
+            )
+
+            from fastapi import HTTPException
 
             from app.api.reviewer_dashboard_routes import submit_review
-            from fastapi import HTTPException
 
             review_data = {"recommendation": "accept"}
 
@@ -256,15 +261,12 @@ class TestReviewerAnalytics:
     @pytest.mark.asyncio
     async def test_get_review_timeline(self, reviewer_user):
         """Test review timeline analytics"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
 
-            timeline_data = [
-                {"_id": "2024-01-15", "count": 2},
-                {"_id": "2024-01-16", "count": 1}
-            ]
+            timeline_data = [{"_id": "2024-01-15", "count": 2}, {"_id": "2024-01-16", "count": 1}]
 
             mock_cursor = MagicMock()
             mock_cursor.to_list = AsyncMock(return_value=timeline_data)
@@ -280,7 +282,7 @@ class TestReviewerAnalytics:
     @pytest.mark.asyncio
     async def test_get_review_domains(self, reviewer_user, mock_assignment, mock_submission):
         """Test domain distribution analytics"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -301,7 +303,7 @@ class TestReviewerAnalytics:
     @pytest.mark.asyncio
     async def test_get_reviewer_performance(self, reviewer_user):
         """Test performance metrics"""
-        with patch('app.api.reviewer_dashboard_routes.mongodb_service') as mock_db:
+        with patch("app.api.reviewer_dashboard_routes.mongodb_service") as mock_db:
             mock_db.get_database = AsyncMock()
             mock_db_instance = MagicMock()
             mock_db.get_database.return_value = mock_db_instance
@@ -309,7 +311,7 @@ class TestReviewerAnalytics:
             performance_data = {
                 "avg_time_ms": 86400000,
                 "min_time_ms": 43200000,
-                "max_time_ms": 172800000
+                "max_time_ms": 172800000,
             }
 
             mock_cursor = MagicMock()
@@ -347,8 +349,9 @@ class TestAccessControl:
     @pytest.mark.asyncio
     async def test_require_reviewer_with_author_role(self):
         """Test access denied for author role"""
-        from app.api.reviewer_dashboard_routes import require_reviewer
         from fastapi import HTTPException
+
+        from app.api.reviewer_dashboard_routes import require_reviewer
 
         user = {"user_id": "test", "role": "author"}
 

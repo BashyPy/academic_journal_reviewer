@@ -3,17 +3,33 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.middleware.auth import auth_service
 from app.middleware.dual_auth import get_current_user
 from app.models.roles import UserRole
 from app.services.audit_logger import audit_logger
 from app.services.mongodb_service import mongodb_service
+from app.utils.common_operations import (
+    get_paginated_audit_logs,
+    get_paginated_submissions,
+    get_submission_analytics,
+    get_submission_with_downloads,
+    update_user_status_common,
+)
 from app.utils.logger import get_logger
+from app.utils.request_utils import get_client_ip
 
 router = APIRouter(prefix="/admin-dashboard", tags=["admin-dashboard"])
 logger = get_logger(__name__)
+
+
+USER_NOT_FOUND = "User not found"
+MONGO_SORT = "$sort"
+MONGO_GROUP = "$group"
+MONGO_MATCH = "$match"
 
 
 def require_admin(user: dict = Depends(get_current_user)):
@@ -25,7 +41,7 @@ def require_admin(user: dict = Depends(get_current_user)):
 
 
 @router.get("/stats")
-async def get_admin_stats(admin: dict = Depends(require_admin)):
+async def get_admin_stats(_admin: dict = Depends(require_admin)):
     """Get admin dashboard statistics"""
     db = await mongodb_service.get_database()
 
@@ -80,13 +96,12 @@ async def list_users(
 @router.get("/users/{user_id}")
 async def get_user_details(user_id: str, admin: dict = Depends(require_admin)):
     """Get detailed user information"""
-    from bson import ObjectId
 
     db = await mongodb_service.get_database()
     user = await db.users.find_one({"_id": ObjectId(user_id)})
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
 
     # Admins cannot view super_admin details
     if admin.get("role") == UserRole.ADMIN.value and user.get("role") == UserRole.SUPER_ADMIN.value:
@@ -106,97 +121,40 @@ class UpdateUserStatusRequest(BaseModel):
 async def update_user_status(
     user_id: str,
     request: UpdateUserStatusRequest,
+    req: Request,
     admin: dict = Depends(require_admin),
 ):
     """Activate or deactivate user (cannot modify super_admins)"""
-    from bson import ObjectId
-
     db = await mongodb_service.get_database()
-
-    # Check if target user exists and is not super_admin
     target_user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+        raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
     if target_user.get("role") == UserRole.SUPER_ADMIN.value:
         raise HTTPException(status_code=403, detail="Cannot modify super admin accounts")
 
-    result = await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"is_active": request.is_active, "updated_at": datetime.now()}},
-    )
-
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    await audit_logger.log_event(
-        event_type="user_status_updated",
-        user_id=admin.get("user_id"),
-        details={"target_user_id": user_id, "is_active": request.is_active},
-        severity="info",
-    )
-
-    return {"message": f"User {'activated' if request.is_active else 'deactivated'} successfully"}
+    return await update_user_status_common(user_id, request.is_active, admin, req)
 
 
 @router.get("/submissions")
 async def list_submissions(
-    admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     status: Optional[str] = None,
 ):
     """List all submissions"""
-    db = await mongodb_service.get_database()
-
-    query = {}
-    if status:
-        query["status"] = status
-
-    submissions = (
-        await db.submissions.find(query)
-        .sort("created_at", -1)
-        .skip(skip)
-        .limit(limit)
-        .to_list(length=limit)
-    )
-    total = await db.submissions.count_documents(query)
-
-    for sub in submissions:
-        sub["_id"] = str(sub["_id"])
-
-    return {"submissions": submissions, "total": total, "skip": skip, "limit": limit}
+    return await get_paginated_submissions(skip, limit, status)
 
 
 @router.get("/submissions/{submission_id}")
-async def get_submission_details(submission_id: str, admin: dict = Depends(require_admin)):
+async def get_submission_details(submission_id: str, _admin: dict = Depends(require_admin)):
     """Get detailed submission information"""
-    from bson import ObjectId
-
-    db = await mongodb_service.get_database()
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
-
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
-
-    submission["_id"] = str(submission["_id"])
-
-    # Add download URLs
-    submission["download_urls"] = {
-        "manuscript": f"/api/v1/downloads/manuscripts/{submission_id}",
-        "review": (
-            f"/api/v1/downloads/reviews/{submission_id}"
-            if submission.get("status") == "completed"
-            else None
-        ),
-    }
-
-    return submission
+    return await get_submission_with_downloads(submission_id)
 
 
 @router.get("/audit-logs")
-async def get_audit_logs(
-    admin: dict = Depends(require_admin),
+async def get_audit_logs(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    _admin: dict = Depends(require_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     event_type: Optional[str] = None,
@@ -204,65 +162,26 @@ async def get_audit_logs(
     days: int = Query(7, ge=1, le=30),
 ):
     """Get audit logs (limited to 30 days for admins)"""
-    db = await mongodb_service.get_database()
-
-    query = {"timestamp": {"$gte": datetime.now() - timedelta(days=days)}}
-    if event_type:
-        query["event_type"] = event_type
-    if severity:
-        query["severity"] = severity
-
-    logs = (
-        await db.audit_logs.find(query)
-        .sort("timestamp", -1)
-        .skip(skip)
-        .limit(limit)
-        .to_list(length=limit)
-    )
-    total = await db.audit_logs.count_documents(query)
-
-    for log in logs:
-        log["_id"] = str(log["_id"])
-
-    return {"logs": logs, "total": total, "skip": skip, "limit": limit}
+    return await get_paginated_audit_logs(skip, limit, event_type, severity, days)
 
 
 @router.get("/analytics/submissions")
-async def get_submission_analytics(
-    admin: dict = Depends(require_admin),
+async def get_submission_analytics_route(
+    _admin: dict = Depends(require_admin),
     days: int = Query(30, ge=1, le=90),
 ):
     """Get submission analytics"""
-    db = await mongodb_service.get_database()
-
-    start_date = datetime.now() - timedelta(days=days)
-
-    pipeline = [
-        {"$match": {"created_at": {"$gte": start_date}}},
-        {
-            "$group": {
-                "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
-                "count": {"$sum": 1},
-                "completed": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
-                "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}},
-            }
-        },
-        {"$sort": {"_id": 1}},
-    ]
-
-    results = await db.submissions.aggregate(pipeline).to_list(length=days)
-
-    return {"analytics": results, "period_days": days}
+    return await get_submission_analytics(days)
 
 
 @router.get("/analytics/domains")
-async def get_domain_analytics(admin: dict = Depends(require_admin)):
+async def get_domain_analytics(_admin: dict = Depends(require_admin)):
     """Get domain distribution analytics"""
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {"$group": {"_id": "$detected_domain", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
+        {MONGO_GROUP: {"_id": "$detected_domain", "count": {"$sum": 1}}},
+        {MONGO_SORT: {"count": -1}},
         {"$limit": 20},
     ]
 
@@ -299,17 +218,18 @@ class CreateAPIKeyRequest(BaseModel):
 @router.post("/api-keys")
 async def create_api_key(
     request: CreateAPIKeyRequest,
+    req: Request,
     admin: dict = Depends(require_admin),
 ):
     """Create API key (admins cannot create super_admin keys)"""
-    from app.middleware.auth import auth_service
 
     # Admins cannot create super_admin API keys
     if request.role == UserRole.SUPER_ADMIN.value:
         raise HTTPException(status_code=403, detail="Cannot create super admin API keys")
 
     # Validate role
-    if request.role not in [r.value for r in UserRole if r != UserRole.SUPER_ADMIN]:
+    valid_roles = [r.value for r in UserRole if r != UserRole.SUPER_ADMIN]
+    if request.role not in valid_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
 
     result = await auth_service.create_api_key(
@@ -320,7 +240,9 @@ async def create_api_key(
 
     await audit_logger.log_event(
         event_type="api_key_created",
-        user_id=admin.get("user_id"),
+        user_id=str(admin["_id"]),
+        user_email=admin.get("email"),
+        ip_address=get_client_ip(req),
         details={"key_name": request.name, "role": request.role},
         severity="info",
     )
@@ -330,7 +252,7 @@ async def create_api_key(
 
 @router.get("/recent-activity")
 async def get_recent_activity(
-    admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
     limit: int = Query(20, ge=1, le=50),
 ):
     """Get recent system activity"""
@@ -350,13 +272,14 @@ async def get_user_statistics(admin: dict = Depends(require_admin)):
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {"$group": {"_id": "$role", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
+        {MONGO_GROUP: {"_id": "$role", "count": {"$sum": 1}}},
+        {MONGO_SORT: {"count": -1}},
     ]
 
     # Exclude super_admin from stats for regular admins
     if admin.get("role") == UserRole.ADMIN.value:
-        pipeline.insert(0, {"$match": {"role": {"$ne": UserRole.SUPER_ADMIN.value}}})
+        match_filter = {MONGO_MATCH: {"role": {"$ne": UserRole.SUPER_ADMIN.value}}}
+        pipeline.insert(0, match_filter)
 
     results = await db.users.aggregate(pipeline).to_list(length=10)
 

@@ -9,6 +9,7 @@ from app.middleware.dual_auth import get_current_user
 from app.models.roles import Permission, has_permission
 from app.services.mongodb_service import mongodb_service
 from app.services.pdf_generator import pdf_generator
+from app.utils.common_operations import generate_filename_base
 from app.utils.logger import get_logger
 
 router = APIRouter(prefix="/downloads", tags=["downloads"])
@@ -18,7 +19,7 @@ logger = get_logger(__name__)
 def _can_access_submission(user: dict, submission: dict) -> bool:
     """Check if user can access this submission"""
     user_role = user.get("role", "author")
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
 
     # Super admin and admin can access all
     if user_role in ["super_admin", "admin"]:
@@ -88,9 +89,13 @@ async def download_original_manuscript(submission_id: str, user: dict = Depends(
         raise
     except Exception as e:
         logger.error(
-            e, additional_info={"submission_id": submission_id, "user_id": user.get("user_id")}
+            e,
+            additional_info={
+                "submission_id": submission_id,
+                "user_id": str(user["_id"]),
+            },
         )
-        raise HTTPException(status_code=500, detail="Failed to download manuscript")
+        raise HTTPException(status_code=500, detail="Failed to download manuscript") from e
 
 
 @router.get("/reviews/{submission_id}")
@@ -131,14 +136,7 @@ async def download_review_pdf(submission_id: str, user: dict = Depends(get_curre
         pdf_buffer.seek(0)
 
         # Build filename
-        original_filename = submission.get("file_metadata", {}).get(
-            "original_filename", submission.get("title", "manuscript")
-        )
-        if "." in original_filename:
-            base_name = original_filename.rsplit(".", 1)[0]
-        else:
-            base_name = original_filename
-
+        base_name = generate_filename_base(submission)
         safe_name = (
             "".join(c for c in base_name if c.isalnum() or c in (" ", "-", "_")).strip()
             or "manuscript"
@@ -155,6 +153,10 @@ async def download_review_pdf(submission_id: str, user: dict = Depends(get_curre
         raise
     except Exception as e:
         logger.error(
-            e, additional_info={"submission_id": submission_id, "user_id": user.get("user_id")}
+            e,
+            additional_info={
+                "submission_id": submission_id,
+                "user_id": str(user["_id"]),
+            },
         )
-        raise HTTPException(status_code=500, detail="Failed to download review PDF")
+        raise HTTPException(status_code=500, detail="Failed to download review PDF") from e

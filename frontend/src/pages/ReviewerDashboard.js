@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
+import UploadForm from '../components/UploadForm';
 import './ReviewerDashboard.css';
 
 const ReviewerDashboard = () => {
@@ -132,7 +133,6 @@ const ReviewerDashboard = () => {
         </div>
         <div className="user-info">
           <span>👤 {user?.name || user?.email}</span>
-          <button onClick={() => navigate('/')} className="btn-home">🏠 Home</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </header>
@@ -167,11 +167,7 @@ const ReviewerDashboard = () => {
       <div className="dashboard-content">
         {activeTab === 'upload' && (
           <div className="upload-tab">
-            <iframe 
-              src="/" 
-              style={{ width: '100%', height: '600px', border: 'none', borderRadius: '8px' }}
-              title="Upload Manuscript"
-            />
+            <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); fetchDashboardData(); }} />
           </div>
         )}
 
@@ -236,8 +232,7 @@ const ReviewerDashboard = () => {
                             className="btn-download"
                             onClick={() => {
                               const baseName = assignment.submission_title.replace(/\.[^/.]+$/, '');
-                              const ext = assignment.submission_title.match(/\.[^/.]+$/)?.[0] || '.pdf';
-                              downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed${ext}`);
+                              downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed.pdf`);
                             }}
                             title="Download review"
                           >
@@ -333,8 +328,7 @@ const ReviewerDashboard = () => {
                           className="btn-download"
                           onClick={() => {
                             const baseName = assignment.submission_title.replace(/\.[^/.]+$/, '');
-                            const ext = assignment.submission_title.match(/\.[^/.]+$/)?.[0] || '.pdf';
-                            downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed${ext}`);
+                            downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed.pdf`);
                           }}
                           title="Download review"
                         >
@@ -376,7 +370,7 @@ const ReviewerDashboard = () => {
         {activeTab === 'review-form' && selectedAssignment && (
           <div className="review-form-tab">
             <h2>Review: {selectedAssignment.submission?.title}</h2>
-            
+
             <div className="manuscript-preview">
               <h3>Manuscript Content</h3>
               <div className="content-preview">
@@ -386,7 +380,7 @@ const ReviewerDashboard = () => {
 
             <div className="review-form">
               <h3>Review Scores (1-10)</h3>
-              
+
               <div className="score-input">
                 <label>Methodology Score:</label>
                 <input
@@ -500,7 +494,7 @@ const ReviewerDashboard = () => {
         {activeTab === 'analytics' && (
           <div className="analytics-tab">
             <h2>Review Analytics</h2>
-            
+
             <div className="analytics-section">
               <h3>Review Timeline (Last 30 Days)</h3>
               <div className="timeline-chart">

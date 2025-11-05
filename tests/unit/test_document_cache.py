@@ -37,9 +37,7 @@ async def test_cache_miss(mock_mongodb, doc_cache_service):
 @patch("app.services.document_cache_service.mongodb_service")
 async def test_cache_hit(mock_mongodb, doc_cache_service):
     cached_data = {"submission_data": {"_id": "test123", "status": "completed"}}
-    mock_mongodb.db.__getitem__.return_value.find_one = AsyncMock(
-        return_value=cached_data
-    )
+    mock_mongodb.db.__getitem__.return_value.find_one = AsyncMock(return_value=cached_data)
 
     result = await doc_cache_service.get_cached_submission("test content")
     assert result == {"_id": "test123", "status": "completed"}

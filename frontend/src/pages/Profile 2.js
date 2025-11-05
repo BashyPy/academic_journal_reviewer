@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import authService from '../services/authService';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 import PasskeyManager from '../components/PasskeyManager';
@@ -14,6 +15,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadProfile();
@@ -70,7 +72,10 @@ const Profile = () => {
 
   return (
     <div className="profile-container">
-      <h2>👤 My Profile</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ margin: 0 }}>👤 My Profile</h2>
+        <button onClick={() => navigate('/')} className="btn-home" style={{ padding: '8px 16px', cursor: 'pointer' }}>🏠 Home</button>
+      </div>
 
       <div className="profile-section">
         <h3>Account Information</h3>

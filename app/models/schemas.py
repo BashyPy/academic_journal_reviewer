@@ -12,14 +12,6 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
-class AgentType(str, Enum):
-    METHODOLOGY = "methodology"
-    LITERATURE = "literature"
-    CLARITY = "clarity"
-    ETHICS = "ethics"
-    SYNTHESIS = "synthesis"
-
-
 class SubmissionCreate(BaseModel):
     title: str
     content: str

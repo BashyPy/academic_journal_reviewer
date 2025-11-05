@@ -12,6 +12,9 @@ from app.utils.validators import validate_password, validate_username
 logger = get_logger(__name__)
 
 
+MONGO_UNSET = "$unset"
+
+
 class UserService:
     def __init__(self):
         self.collection = None
@@ -45,7 +48,12 @@ class UserService:
         return f"aaris_{secrets.token_urlsafe(32)}"
 
     async def create_user(
-        self, email: str, password: str, name: str, role: str = "author", username: str = None
+        self,
+        email: str,
+        password: str,
+        name: str,
+        role: str = "author",
+        username: str = None,
     ) -> dict:
         """Create new user"""
         await self.initialize()
@@ -80,7 +88,7 @@ class UserService:
             "role": role,
             "api_key": api_key,
             "email_verified": False,
-            "active": True,
+            "active": False,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
@@ -107,16 +115,23 @@ class UserService:
         return user
 
     async def verify_email(self, email: str) -> bool:
-        """Mark email as verified"""
+        """Mark email as verified, activate account, and clear OTP"""
         await self.initialize()
         result = await self.collection.update_one(
             {"email": email},
-            {"$set": {"email_verified": True, "updated_at": datetime.now()}},
+            {
+                "$set": {
+                    "email_verified": True,
+                    "active": True,
+                    "updated_at": datetime.now(),
+                },
+                MONGO_UNSET: {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
+            },
         )
         return result.modified_count > 0
 
     async def update_password(self, email: str, new_password: str) -> bool:
-        """Update user password"""
+        """Update user password and clear OTP"""
         await self.initialize()
 
         # Validate password strength
@@ -130,7 +145,8 @@ class UserService:
                 "$set": {
                     "password": self.hash_password(new_password),
                     "updated_at": datetime.now(),
-                }
+                },
+                MONGO_UNSET: {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
             },
         )
         return result.modified_count > 0
@@ -150,11 +166,18 @@ class UserService:
         return result.deleted_count > 0
 
     async def change_email(self, old_email: str, new_email: str) -> bool:
-        """Change user email"""
+        """Change user email and clear OTP"""
         await self.initialize()
         result = await self.collection.update_one(
             {"email": old_email},
-            {"$set": {"email": new_email, "pending_email": None, "updated_at": datetime.now()}},
+            {
+                "$set": {
+                    "email": new_email,
+                    "pending_email": None,
+                    "updated_at": datetime.now(),
+                },
+                MONGO_UNSET: {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
+            },
         )
         logger.info(f"Email changed: {old_email} -> {new_email}")
         return result.modified_count > 0

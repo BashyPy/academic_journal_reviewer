@@ -8,10 +8,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.middleware.dual_auth import get_current_user
 from app.services.mongodb_service import mongodb_service
+from app.utils.common_operations import (
+    get_performance_metrics,
+    get_submission_with_downloads,
+)
 from app.utils.logger import get_logger
 
 router = APIRouter(prefix="/author", tags=["author-dashboard"])
 logger = get_logger(__name__)
+
+
+PROCESSING_TIME = "$processing_time"
+MONGO_SORT = "$sort"
+MONGO_GROUP = "$group"
+MONGO_MATCH = "$match"
 
 
 def require_author(user: dict = Depends(get_current_user)):
@@ -23,7 +33,7 @@ def require_author(user: dict = Depends(get_current_user)):
 async def get_author_stats(user: dict = Depends(require_author)):
     """Get author-specific statistics"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
 
     total = await db.submissions.count_documents({"user_id": user_id})
     completed = await db.submissions.count_documents({"user_id": user_id, "status": "completed"})
@@ -47,7 +57,7 @@ async def get_author_submissions(
 ):
     """Get author's submissions with pagination"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
 
     query = {"user_id": user_id}
     if status:
@@ -72,26 +82,11 @@ async def get_author_submissions(
 async def get_submission_detail(submission_id: str, user: dict = Depends(require_author)):
     """Get detailed submission information"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
-
+    user_id = str(user["_id"])
     submission = await db.submissions.find_one({"_id": ObjectId(submission_id), "user_id": user_id})
-
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
-
-    submission["_id"] = str(submission["_id"])
-
-    # Add download URLs
-    submission["download_urls"] = {
-        "manuscript": f"/api/v1/downloads/manuscripts/{submission_id}",
-        "review": (
-            f"/api/v1/downloads/reviews/{submission_id}"
-            if submission.get("status") == "completed"
-            else None
-        ),
-    }
-
-    return submission
+    return await get_submission_with_downloads(submission_id)
 
 
 @router.get("/analytics/timeline")
@@ -101,19 +96,19 @@ async def get_submission_timeline(
 ):
     """Get submission timeline analytics"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
     start_date = datetime.now() - timedelta(days=days)
 
     pipeline = [
-        {"$match": {"user_id": user_id, "created_at": {"$gte": start_date}}},
+        {MONGO_MATCH: {"user_id": user_id, "created_at": {"$gte": start_date}}},
         {
-            "$group": {
+            MONGO_GROUP: {
                 "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
                 "count": {"$sum": 1},
                 "completed": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
             }
         },
-        {"$sort": {"_id": 1}},
+        {MONGO_SORT: {"_id": 1}},
     ]
 
     results = await db.submissions.aggregate(pipeline).to_list(length=days)
@@ -124,12 +119,12 @@ async def get_submission_timeline(
 async def get_domain_distribution(user: dict = Depends(require_author)):
     """Get domain distribution for author's submissions"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
 
     pipeline = [
-        {"$match": {"user_id": user_id}},
-        {"$group": {"_id": "$detected_domain", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
+        {MONGO_MATCH: {"user_id": user_id}},
+        {MONGO_GROUP: {"_id": "$detected_domain", "count": {"$sum": 1}}},
+        {MONGO_SORT: {"count": -1}},
     ]
 
     results = await db.submissions.aggregate(pipeline).to_list(length=50)
@@ -139,31 +134,14 @@ async def get_domain_distribution(user: dict = Depends(require_author)):
 @router.get("/analytics/performance")
 async def get_review_performance(user: dict = Depends(require_author)):
     """Get average review processing time"""
-    db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
-
-    pipeline = [
-        {"$match": {"user_id": user_id, "status": "completed", "completed_at": {"$exists": True}}},
-        {"$project": {"processing_time": {"$subtract": ["$completed_at", "$created_at"]}}},
-        {
-            "$group": {
-                "_id": None,
-                "avg_time_ms": {"$avg": "$processing_time"},
-                "min_time_ms": {"$min": "$processing_time"},
-                "max_time_ms": {"$max": "$processing_time"},
-            }
-        },
-    ]
-
-    result = await db.submissions.aggregate(pipeline).to_list(length=1)
-    return {"performance": result[0] if result else {}}
+    return await get_performance_metrics(str(user["_id"]))
 
 
 @router.delete("/submissions/{submission_id}")
 async def delete_submission(submission_id: str, user: dict = Depends(require_author)):
     """Delete author's own submission"""
     db = await mongodb_service.get_database()
-    user_id = user.get("user_id")
+    user_id = str(user["_id"])
 
     result = await db.submissions.delete_one({"_id": ObjectId(submission_id), "user_id": user_id})
 
