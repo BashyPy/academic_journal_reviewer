@@ -56,7 +56,7 @@ async def otp_cleanup_background_task():
         try:
             await otp_cleanup_service.cleanup_expired_otps()
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error(f"OTP cleanup task failed: {e}")
+            logger.error(e, additional_info={"task": "otp_cleanup"})
 
         # Wait 1 hour before next cleanup
         await asyncio.sleep(3600)
