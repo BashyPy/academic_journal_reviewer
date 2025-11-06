@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
-import UploadForm from '../components/UploadForm';
+import rateLimiter from '../services/rateLimiter';
 import './AuthorDashboard.css';
 
 const AuthorDashboard = () => {
@@ -16,10 +16,39 @@ const AuthorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [statusFilter, setStatusFilter] = useState('');
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadProcessing, setUploadProcessing] = useState(false);
+  const [uploadCompleted, setUploadCompleted] = useState(false);
+  const [uploadSubmissionId, setUploadSubmissionId] = useState(null);
+  const [uploadSubmissionData, setUploadSubmissionData] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    let interval;
+    if (uploadProcessing && uploadSubmissionId) {
+      interval = setInterval(async () => {
+        try {
+          const response = await axios.get(`/api/v1/submissions/${uploadSubmissionId}/report`);
+          if (!response.data.processing) {
+            setUploadProcessing(false);
+            setUploadCompleted(true);
+            setUploadSubmissionData(response.data);
+            clearInterval(interval);
+            fetchDashboardData();
+          }
+        } catch (err) {
+          console.error('Status check error:', err);
+        }
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [uploadProcessing, uploadSubmissionId]);
 
   const fetchDashboardData = async () => {
     try {
@@ -84,6 +113,87 @@ const AuthorDashboard = () => {
     return `${minutes}m ${seconds}s`;
   };
 
+  const handleFileChange = (selectedFile) => {
+    if (selectedFile) {
+      const fileExt = selectedFile.name.split('.').pop().toLowerCase();
+      if (!['pdf', 'docx'].includes(fileExt)) {
+        setUploadError('Only PDF and DOCX files are allowed');
+        setFile(null);
+        return;
+      }
+      setUploadError('');
+      setFile(selectedFile);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFileChange(e.dataTransfer.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setUploadError('Please select a file');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await rateLimiter.makeRequest('upload', () =>
+        axios.post('/api/v1/submissions/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      );
+      const subId = response.data.submission_id;
+      setUploadSubmissionId(subId);
+      setUploadProcessing(true);
+      setFile(null);
+    } catch (err) {
+      setUploadError(err.response?.data?.detail || err.message || 'Network error occurred');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleViewReview = () => {
+    window.open(`/review/${uploadSubmissionId}`, '_blank');
+  };
+
+  const handleDownloadReview = async () => {
+    try {
+      const response = await axios.get(`/api/v1/submissions/${uploadSubmissionId}/download`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const baseName = uploadSubmissionData?.title?.replace(/\.[^/.]+$/, '') || 'review';
+      link.setAttribute('download', `${baseName}_reviewed.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+      setUploadError('Failed to download review');
+    }
+  };
+
+  const handleNewUpload = () => {
+    setUploadCompleted(false);
+    setUploadProcessing(false);
+    setUploadSubmissionId(null);
+    setUploadSubmissionData(null);
+    setFile(null);
+    setUploadError('');
+  };
+
   if (loading) {
     return <div className="author-dashboard loading">Loading dashboard...</div>;
   }
@@ -108,14 +218,102 @@ const AuthorDashboard = () => {
 
       <div className="dashboard-tabs">
         <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload</button>
+        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload Manuscript</button>
         <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>My Submissions</button>
         <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
       </div>
 
       {activeTab === 'upload' && (
         <div className="upload-tab">
-          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); fetchDashboardData(); }} />
+          <div className="upload-card">
+            <div className="upload-header">
+              <h3>📄 Upload Academic Manuscript</h3>
+              <p>Submit your PDF or DOCX file for comprehensive AI-powered review</p>
+            </div>
+
+            <div
+              className={`file-drop-zone ${dragOver ? 'dragover' : ''}`}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+              onClick={() => document.getElementById('file-input').click()}
+            >
+              <div className="drop-content">
+                <div className="drop-icon">📁</div>
+                <p className="drop-title">Drop your file here or click to browse</p>
+                <p className="drop-subtitle">Supported formats: PDF, DOCX • Maximum size: 50MB</p>
+              </div>
+            </div>
+
+            <input
+              id="file-input"
+              type="file"
+              onChange={(e) => handleFileChange(e.target.files[0])}
+              accept=".pdf,.docx"
+              style={{ display: 'none' }}
+            />
+
+            {file && (
+              <div className="selected-file">
+                <span>📎 {file.name}</span>
+                <span className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+              </div>
+            )}
+
+            {uploadError && <div className="error-message">❌ {uploadError}</div>}
+
+            {uploadCompleted ? (
+              <div className="upload-completion">
+                <div className="success-icon">✅</div>
+                <h3>Review Complete!</h3>
+                <p>Your manuscript analysis is ready.</p>
+                <div className="action-buttons">
+                  <button className="btn-view" onClick={handleViewReview}>
+                    👁️ View Review
+                  </button>
+                  <button className="btn-download-review" onClick={handleDownloadReview}>
+                    📥 Download Review
+                  </button>
+                </div>
+                <button className="btn-new-upload" onClick={handleNewUpload}>
+                  📄 Upload Another Document
+                </button>
+              </div>
+            ) : uploadProcessing ? (
+              <div className="upload-processing">
+                <div className="spinner-small"></div>
+                <p>📊 Review in progress...</p>
+                <p className="processing-note">This typically takes 2-5 minutes. Please wait...</p>
+              </div>
+            ) : (
+              <button
+                className="btn-upload"
+                onClick={handleUpload}
+                disabled={uploading || !file}
+              >
+                {uploading ? (
+                  <>
+                    <div className="spinner-small"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  '🚀 Start Review'
+                )}
+              </button>
+            )}
+
+            <div className="upload-info">
+              <h4>What happens next?</h4>
+              <ul>
+                <li>🔬 Methodology analysis by AI agents</li>
+                <li>📚 Literature review and citation check</li>
+                <li>✍️ Clarity and writing quality assessment</li>
+                <li>⚖️ Ethics and compliance evaluation</li>
+                <li>📊 Comprehensive final report generation</li>
+              </ul>
+              <p className="info-note">Average processing time: 2-5 minutes</p>
+            </div>
+          </div>
         </div>
       )}
 

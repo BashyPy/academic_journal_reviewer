@@ -9,7 +9,7 @@ db.createCollection('users', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['email', 'hashed_password', 'role', 'created_at'],
+      required: ['email', 'password', 'role', 'created_at'],
       properties: {
         email: {
           bsonType: 'string',

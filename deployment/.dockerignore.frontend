@@ -1,0 +1,15 @@
+# Minimal dockerignore for frontend build
+.git/
+.github/
+*.md
+!frontend/
+frontend/node_modules/
+frontend/build/
+app/
+tests/
+deployment/
+scripts/
+docs/
+diagrams/
+.env*
+*.log

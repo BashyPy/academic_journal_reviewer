@@ -168,7 +168,9 @@ class EnhancedLangGraphWorkflow:  # pylint: disable=too-few-public-methods
         )
 
         # Small method-specific runners using native agent prompts
-        async def _domain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
+        async def _domain_runner(
+            kind: str, numbered_text: str, enhanced_context: Dict[str, Any]
+        ) -> str:
             # Get native agent system prompt
             agent_map = {
                 "methodology": MethodologyAgent(),
@@ -177,7 +179,7 @@ class EnhancedLangGraphWorkflow:  # pylint: disable=too-few-public-methods
             agent = agent_map.get(kind)
             if not agent:
                 return await langchain_service.domain_aware_review(
-                    content, state["domain"], kind, enhanced_context
+                    numbered_text, state["domain"], kind, enhanced_context
                 )
 
             # Build rich prompt using native agent's system prompt
@@ -192,17 +194,17 @@ Total: {manuscript_length} words
 REVIEW REQUIREMENTS:
 - Reference specific sections and line numbers
 - Quote exact text for each issue
-- Prioritize by severity: major (critical flaws) > moderate (important improvements) > minor (suggestions)
+- Prioritize by severity: major (critical flaws) > moderate (improvements) > minor (suggestions)
 - Provide section-specific recommendations
 - Focus on your expertise area
 
-MANUSCRIPT CONTENT:
+NUMBERED MANUSCRIPT:
 Title: {state['title']}
 Domain: {state['domain']}
 
-{content}
+{numbered_text}
 
-Provide comprehensive analysis with:
+Provide LINE-BY-LINE analysis with:
 1. Score (0-10) with justification
 2. Detailed findings with quoted text and line references
 3. Severity classification (major/moderate/minor)
@@ -212,7 +214,9 @@ Provide comprehensive analysis with:
 """
             return await langchain_service.invoke_with_rag(rich_prompt, context=enhanced_context)
 
-        async def _chain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
+        async def _chain_runner(
+            kind: str, numbered_text: str, enhanced_context: Dict[str, Any]
+        ) -> str:
             if kind == "clarity":
                 # Use native ClarityAgent prompt
                 clarity_agent = ClarityAgent()
@@ -227,17 +231,17 @@ Total: {manuscript_length} words
 REVIEW REQUIREMENTS:
 - Reference specific sections and line numbers
 - Quote exact unclear passages
-- Prioritize by severity: major (critical clarity issues) > moderate (important improvements) > minor (suggestions)
+- Prioritize by severity: major (critical clarity issues) > moderate (improvements) > minor (suggestions)
 - Provide concrete improvement suggestions
 - Focus on clarity, not stylistic preferences
 
-MANUSCRIPT CONTENT:
+NUMBERED MANUSCRIPT:
 Title: {state['title']}
 Domain: {state['domain']}
 
-{content}
+{numbered_text}
 
-Provide structured clarity assessment with:
+Provide LINE-BY-LINE clarity assessment with:
 1. Score (0-10) based on communication effectiveness
 2. Specific unclear passages with quotes and line numbers
 3. Logical flow and organization issues
@@ -247,9 +251,13 @@ Provide structured clarity assessment with:
 7. Confidence level and bias check
 """
                 return await langchain_service.chain_of_thought_analysis(prompt, enhanced_context)
-            return await langchain_service.chain_of_thought_analysis(content, enhanced_context)
+            return await langchain_service.chain_of_thought_analysis(
+                numbered_text, enhanced_context
+            )
 
-        async def _multi_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
+        async def _multi_runner(
+            kind: str, numbered_text: str, enhanced_context: Dict[str, Any]
+        ) -> str:
             if kind == "ethics":
                 # Use native EthicsAgent prompt
                 ethics_agent = EthicsAgent()
@@ -264,17 +272,17 @@ Total: {manuscript_length} words
 REVIEW REQUIREMENTS:
 - Reference specific sections and line numbers
 - Quote exact text showing ethical concerns
-- Prioritize by severity: major (critical ethical issues) > moderate (important concerns) > minor (suggestions)
+- Prioritize by severity: major (critical ethical issues) > moderate (concerns) > minor (suggestions)
 - Provide practical guidance for compliance
 - Consider cultural and institutional context
 
-MANUSCRIPT CONTENT:
+NUMBERED MANUSCRIPT:
 Title: {state['title']}
 Domain: {state['domain']}
 
-{content}
+{numbered_text}
 
-Provide comprehensive ethical evaluation with:
+Provide LINE-BY-LINE ethical evaluation with:
 1. Score (0-10) based on ethical compliance
 2. Specific ethical concerns with quoted evidence
 3. Informed consent and privacy assessment
@@ -284,7 +292,7 @@ Provide comprehensive ethical evaluation with:
 7. Confidence level and bias check
 """
                 return await langchain_service.multi_model_consensus(prompt, enhanced_context)
-            return await langchain_service.multi_model_consensus(content, enhanced_context)
+            return await langchain_service.multi_model_consensus(numbered_text, enhanced_context)
 
         async def _run(kind: str, max_len: int, method: str) -> str:
             try:
@@ -293,7 +301,10 @@ Provide comprehensive ethical evaluation with:
                     if len(state["content"]) > max_len
                     else state["content"]
                 )
-                enhanced_context = {**state["context"], "content": content}
+                # Add line numbers to content
+                lines = content.split("\n")
+                numbered_text = "\n".join([f"Line {i+1}: {line}" for i, line in enumerate(lines)])
+                enhanced_context = {**state["context"], "content": numbered_text}
 
                 runner_map = {
                     "domain": _domain_runner,
@@ -304,7 +315,7 @@ Provide comprehensive ethical evaluation with:
                 if not runner:
                     return f"{kind.title()} review failed due to internal error."
 
-                return await runner(kind, content, enhanced_context)
+                return await runner(kind, numbered_text, enhanced_context)
             except Exception as e:  # pylint: disable=broad-exception-caught
                 self.logger.error(e, additional_info={"review_type": kind})
                 return f"{kind.title()} review failed due to internal error."

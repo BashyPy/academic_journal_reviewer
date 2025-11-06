@@ -486,6 +486,10 @@ class LangChainService:
                 self.vector_store.aadd_documents(documents), timeout=30.0
             )
             # Handle different return types from vector store
+            # Await the result if it's a coroutine/future
+            if hasattr(result, "__await__"):
+                result = await result
+
             if hasattr(result, "inserted_ids"):
                 return result.inserted_ids
             if isinstance(result, list):

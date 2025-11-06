@@ -69,15 +69,25 @@ class BaseAgent(ABC):
     async def _get_response(self, prompt: str, manuscript_content: str) -> str:
         # Use enhanced analysis for longer manuscripts
         if len(manuscript_content.split()) > 3000:
-            from app.services.enhanced_llm_service import enhanced_llm_service
+            # Import only if needed for long manuscripts
+            try:
+                from app.services.enhanced_llm_service import (  # pylint: disable=import-outside-toplevel
+                    enhanced_llm_service,
+                )
 
-            response = await enhanced_llm_service.multi_pass_analysis(prompt, "detailed")
-            return (
-                response if isinstance(response, str) else getattr(response, "text", str(response))
-            )
-        else:
-            response = await self.model.generate_content_async(prompt)
-            return getattr(response, "text", response)
+                response = await enhanced_llm_service.multi_pass_analysis(prompt, "detailed")
+                return (
+                    response
+                    if isinstance(response, str)
+                    else getattr(response, "text", str(response))
+                )
+            except ImportError:
+                # Fallback to standard model if enhanced service unavailable
+                response = await self.model.generate_content_async(prompt)
+                return getattr(response, "text", response)
+
+        response = await self.model.generate_content_async(prompt)
+        return getattr(response, "text", response)
 
     def _log_completion(self, submission_id: str, critique: AgentCritique) -> None:
         self.logger.log_agent_activity(
@@ -111,7 +121,10 @@ class BaseAgent(ABC):
                 if start != 0 or end != 0:
                     highlight.start_pos = start
                     highlight.end_pos = end
-                    highlight.context = f"Line {line_num}, {section.title()} section: {TextAnalyzer.extract_context(manuscript_content, start, end)}"
+                    context_text = TextAnalyzer.extract_context(manuscript_content, start, end)
+                    highlight.context = (
+                        f"Line {line_num}, {section.title()} section: {context_text}"
+                    )
                     validated_highlights.append(highlight)
 
             finding.highlights = validated_highlights
@@ -119,64 +132,50 @@ class BaseAgent(ABC):
     def build_prompt(self, context: Dict[str, Any]) -> str:
         system_prompt = self.get_system_prompt()
         manuscript_content = context.get("content", "")
-        sections = context.get("sections", {})
-        manuscript_length = len(manuscript_content.split())
+        context.get("sections", {})
 
-        # Create section summary
-        section_info = "\n".join(
-            [
-                f"- {name.title()}: {data['word_count']} words (lines {min([l[0] for l in data['content']] or [0])}-{max([l[0] for l in data['content']] or [0])})"
-                for name, data in sections.items()
-                if data["content"]
-            ]
-        )
+        # Add line numbers to manuscript
+        lines = manuscript_content.split("\n")
+        numbered_content = "\n".join([f"Line {i+1}: {line}" for i, line in enumerate(lines)])
 
         return f"""
 {system_prompt}
 
-MANUSCRIPT STRUCTURE:
-{section_info}
-Total: {manuscript_length} words
-
-REVIEW REQUIREMENTS:
-- Reference specific sections and line numbers
-- Quote exact text for each issue
-- Prioritize by severity: major (critical flaws) > moderate (important improvements) > minor (suggestions)
-- Provide section-specific recommendations
-- Focus on your expertise area
-
-MANUSCRIPT CONTENT:
-{manuscript_content}
+NUMBERED MANUSCRIPT:
+{numbered_content}
 
 JSON RESPONSE FORMAT:
 {{
     "score": <float 0-10>,
     "findings": [
         {{
-            "finding": "Issue description with section reference",
+            "finding": "**Line X**: \"exact quoted text\" - Issue: [problem] - Fix: [sol]",
             "highlights": [
                 {{
                     "text": "exact quoted text",
                     "start_pos": 0,
                     "end_pos": 0,
-                    "context": "section context",
-                    "issue_type": "specific problem type"
+                    "context": "Line X context",
+                    "issue_type": "specific problem"
                 }}
             ],
             "severity": "major|moderate|minor",
             "category": "{self.agent_type}",
-            "section": "manuscript section name",
-            "line_reference": "approximate line number"
+            "section": "section name",
+            "line_reference": "X"
         }}
     ],
-    "recommendations": ["Section-specific actionable recommendations"],
+    "recommendations": ["**Line X-Y**: specific change needed"],
     "confidence": <float 0-1>,
-    "bias_check": "objective analysis confirmation"
+    "bias_check": "objective analysis"
 }}
 """
 
-    def parse_response(self, response_text: str) -> AgentCritique:
-        import json
+    def parse_response(  # pylint: disable=too-many-locals
+        self, response_text: str
+    ) -> AgentCritique:
+        import json  # pylint: disable=import-outside-toplevel
+        import random  # pylint: disable=import-outside-toplevel
 
         try:
             start = response_text.find("{")
@@ -184,34 +183,8 @@ JSON RESPONSE FORMAT:
             json_str = response_text[start:end]
             data = json.loads(json_str)
 
-            findings = []
-            for f in data.get("findings", []):
-                highlights = []
-                for h in f.get("highlights", []):
-                    highlights.append(
-                        TextHighlight(
-                            text=h.get("text", ""),
-                            start_pos=h.get("start_pos", 0),
-                            end_pos=h.get("end_pos", 0),
-                            context=h.get("context", ""),
-                            issue_type=h.get("issue_type", ""),
-                        )
-                    )
-
-                findings.append(
-                    DetailedFinding(
-                        finding=f.get("finding", ""),
-                        highlights=highlights,
-                        severity=f.get("severity", "minor"),
-                        category=f.get("category", "general"),
-                    )
-                )
-
-            # Ensure score is realistic and varies based on content
+            findings = self._parse_findings(data)
             raw_score = data.get("score", 5.0)
-            # Add slight randomization to prevent identical scores
-            import random
-
             score_variance = random.uniform(-0.3, 0.3)
             adjusted_score = max(0.0, min(10.0, raw_score + score_variance))
 
@@ -223,7 +196,7 @@ JSON RESPONSE FORMAT:
                 confidence=data.get("confidence", 0.0),
                 bias_check=data.get("bias_check", "Analysis completed objectively"),
             )
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             return AgentCritique(
                 agent_type=self.agent_type,
                 score=0.0,
@@ -239,3 +212,27 @@ JSON RESPONSE FORMAT:
                 confidence=0.0,
                 bias_check="Error in analysis",
             )
+
+    def _parse_findings(self, data: Dict[str, Any]) -> list:
+        """Extract findings from response data."""
+        findings = []
+        for f in data.get("findings", []):
+            highlights = [
+                TextHighlight(
+                    text=h.get("text", ""),
+                    start_pos=h.get("start_pos", 0),
+                    end_pos=h.get("end_pos", 0),
+                    context=h.get("context", ""),
+                    issue_type=h.get("issue_type", ""),
+                )
+                for h in f.get("highlights", [])
+            ]
+            findings.append(
+                DetailedFinding(
+                    finding=f.get("finding", ""),
+                    highlights=highlights,
+                    severity=f.get("severity", "minor"),
+                    category=f.get("category", "general"),
+                )
+            )
+        return findings

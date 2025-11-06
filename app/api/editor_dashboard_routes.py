@@ -74,7 +74,7 @@ async def list_all_submissions(
         query["detected_domain"] = domain
 
     submissions = (
-        await db.submissions.find(query)
+        await db.submissions.find(query, {"file_data": 0})
         .sort("created_at", -1)
         .skip(skip)
         .limit(limit)
@@ -84,6 +84,8 @@ async def list_all_submissions(
 
     for sub in submissions:
         sub["_id"] = str(sub["_id"])
+        if "file_metadata" in sub and "file_data" in sub["file_metadata"]:
+            del sub["file_metadata"]["file_data"]
 
     return {"submissions": submissions, "total": total, "skip": skip, "limit": limit}
 
@@ -92,11 +94,13 @@ async def list_all_submissions(
 async def get_submission_details(submission_id: str, _editor: dict = Depends(require_editor)):
     """Get detailed submission with review data"""
     db = await mongodb_service.get_database()
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
+    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)}, {"file_data": 0})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
     submission["_id"] = str(submission["_id"])
+    if "file_metadata" in submission and "file_data" in submission["file_metadata"]:
+        del submission["file_metadata"]["file_data"]
     tasks = await db.agent_tasks.find({"submission_id": submission_id}).to_list(length=100)
     for task in tasks:
         task["_id"] = str(task["_id"])
@@ -238,11 +242,16 @@ async def get_recent_activity(
     db = await mongodb_service.get_database()
 
     submissions = (
-        await db.submissions.find().sort("updated_at", -1).limit(limit).to_list(length=limit)
+        await db.submissions.find({}, {"file_data": 0})
+        .sort("updated_at", -1)
+        .limit(limit)
+        .to_list(length=limit)
     )
 
     for sub in submissions:
         sub["_id"] = str(sub["_id"])
+        if "file_metadata" in sub and "file_data" in sub["file_metadata"]:
+            del sub["file_metadata"]["file_data"]
 
     return {"recent_activity": submissions}
 

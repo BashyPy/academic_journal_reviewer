@@ -64,7 +64,7 @@ async def get_author_submissions(
         query["status"] = status
 
     submissions = (
-        await db.submissions.find(query)
+        await db.submissions.find(query, {"file_data": 0})
         .sort("created_at", -1)
         .skip(skip)
         .limit(limit)
@@ -74,6 +74,8 @@ async def get_author_submissions(
 
     for sub in submissions:
         sub["_id"] = str(sub["_id"])
+        if "file_metadata" in sub and "file_data" in sub["file_metadata"]:
+            del sub["file_metadata"]["file_data"]
 
     return {"submissions": submissions, "total": total, "skip": skip, "limit": limit}
 

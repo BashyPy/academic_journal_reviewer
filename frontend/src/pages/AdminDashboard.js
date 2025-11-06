@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
-import UploadForm from '../components/UploadForm';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -209,12 +208,6 @@ const AdminDashboard = () => {
         </aside>
 
         <main className="dashboard-content">
-
-      {activeTab === 'upload' && (
-        <div className="upload-section">
-          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); loadDashboardData(); }} />
-        </div>
-      )}
 
       {activeTab === 'overview' && stats && (
         <div className="overview-section">

@@ -137,18 +137,17 @@ Ensure professional academic tone and comprehensive coverage.
 
         moderate_issues = prioritized_issues.get("moderate", [])
         if moderate_issues:
-            parts.append(f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):\n")
+            parts.append(f"\nMODERATE ISSUES (top 5 of {len(moderate_issues)}):")
+            parts.append("\n")
             parts.append(self._format_issues_list(moderate_issues[:5], quote_mode="snippet"))
             if len(moderate_issues) > 5:
-                parts.append(
-                    f"- Plus {len(moderate_issues) - 5} additional moderate issues across sections\n"
-                )
+                extra_count = len(moderate_issues) - 5
+                parts.append(f"- Plus {extra_count} additional moderate issues across sections\n")
 
         minor_issues = prioritized_issues.get("minor", [])
         if minor_issues:
-            parts.append(
-                f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): Enhancement opportunities across sections\n"
-            )
+            parts.append(f"\nMINOR SUGGESTIONS ({len(minor_issues)} items): ")
+            parts.append("Enhancement opportunities across sections\n")
 
         return "".join(parts)
 
@@ -224,85 +223,126 @@ Ensure professional academic tone and comprehensive coverage.
     def _determine_decision(self, score: float) -> str:
         if score >= 8.0:
             return "Accept"
-        elif score >= 6.5:
+        if score >= 6.5:
             return "Minor Revisions"
-        elif score >= 4.0:
+        if score >= 4.0:
             return "Major Revisions"
         return "Reject"
 
-    def _build_prompt_template(
+    def _build_prompt_template(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         submission,
         critiques_text,
         overall_score,
         decision,
-        weights,
+        weights,  # pylint: disable=unused-argument
         prioritized_issues,
         domain_info,
-        domain_criteria,
+        domain_criteria,  # pylint: disable=unused-argument
     ) -> str:
-        major_count = len(prioritized_issues.get("major", []))
-        moderate_count = len(prioritized_issues.get("moderate", []))
-        minor_count = len(prioritized_issues.get("minor", []))
+        # Issue counts available if needed for future enhancements
+        _ = len(prioritized_issues.get("major", []))
+        _ = len(prioritized_issues.get("moderate", []))
+        _ = len(prioritized_issues.get("minor", []))
 
         domain = domain_info["primary_domain"]
-        confidence = domain_info["confidence"]
+        _ = domain_info["confidence"]
+
+        content = submission.get("content", "")
+        lines = content.split("\n")
+        numbered_content = "\n".join([f"Line {i+1}: {line}" for i, line in enumerate(lines)])
 
         return f"""
-Generate a professional, domain-specific academic review report with standardized issue explanations.
+Generate a COMPREHENSIVE LINE-BY-LINE academic review report.
 
 MANUSCRIPT: {submission['title']}
-DOMAIN: {domain.title()} (confidence: {confidence:.2f})
-OVERALL SCORE: {overall_score}/10 | DECISION: {decision}
-ISSUE SUMMARY: {major_count} major, {moderate_count} moderate, {minor_count} minor
+DOMAIN: {domain.title()}
+SCORE: {overall_score}/10 | DECISION: {decision}
 
-DEDUPLICATED ANALYSIS:
+NUMBERED MANUSCRIPT:
+{numbered_content}
+
+AGENT FINDINGS:
 {critiques_text}
 
-CREATE STRUCTURED REPORT WITH RIGOROUS STANDARDS:
+GENERATE REVIEW WITH THIS EXACT STRUCTURE:
 
-## Executive Summary
-- Score: {overall_score}/10, Decision: {decision}
-- Brief assessment highlighting main strengths and key improvement areas (max 2 paragraphs)
+# Detailed Professional Review Report
 
-## Critical Issues ({major_count} items)
-For each critical issue, provide EXACTLY 2 paragraphs:
-- Paragraph 1: Identify the specific problem with exact quoted text and line references
-- Paragraph 2: Explain the impact and provide concrete solution/action required
+## Introduction
+[2-3 paragraphs on manuscript context and review scope]
 
-## Important Improvements ({moderate_count} items)
-For each improvement (top 5 detailed), provide AT MOST 2 paragraphs:
-- Paragraph 1: Quote problematic text with section/line reference and explain the issue
-- Paragraph 2: Suggest specific improvement with rationale (optional if issue is self-evident)
-- Group remaining issues by section with 1 paragraph summaries
+## Summary of Key Findings
+- [Bullet point findings with specific numbers from manuscript]
+- [Include exact data, percentages, sample sizes]
 
-## Minor Suggestions ({minor_count} items)
-- List with 1 paragraph explanations maximum
-- Focus on enhancement opportunities with section references
+## Methodological Approach
+[2-3 paragraphs analyzing methods, tools, and techniques used]
 
-## Manuscript Strengths
-- Highlight specific practices with examples (1-2 paragraphs total)
-- Quote well-written passages where applicable
+## Line-by-Line Review
 
-## Section-Specific Action Items
-1. **Abstract**: [Specific changes needed - 1 paragraph]
-2. **Methods**: [Exact additions/modifications - 1 paragraph]
-3. **Results**: [Specific improvements - 1 paragraph]
-4. **Discussion**: [Targeted enhancements - 1 paragraph]
+### Abstract Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
 
-## Score Breakdown ({domain.title()} Domain Weighting)
-Methodology: {weights['methodology']*100:.0f}% | Literature: {weights['literature']*100:.0f}% | Clarity: {weights['clarity']*100:.0f}% | Ethics: {weights['ethics']*100:.0f}%
+**Line Y**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
 
-## Domain-Specific Focus Areas
-{self._format_domain_criteria(domain_criteria)}
+### Introduction Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
 
-STRICT FORMATTING RULES:
-- Critical issues: EXACTLY 2 paragraphs each
-- Important improvements: AT MOST 2 paragraphs each
-- Minor suggestions: 1 paragraph maximum each
-- Include exact quoted text and line references for all issues
-- Apply {domain.title()} domain standards and expectations
-- Ensure explanations are concise, rigorous, and actionable
+[Continue for ALL sections: Methods, Results, Discussion, Conclusion]
+
+### Methods Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
+
+### Results Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
+
+### Discussion Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
+
+### References Section
+**Line X**: "[exact quoted text]"
+- Issue: [specific problem]
+- Recommendation: [concrete fix]
+
+## Implications and Future Directions
+[2-3 paragraphs]
+
+## Strengths and Limitations
+
+### Strengths
+1. [Strength with line reference]: [explanation]
+2. [Strength with line reference]: [explanation]
+
+### Limitations
+1. [Limitation with line reference]: [explanation and fix]
+2. [Limitation with line reference]: [explanation and fix]
+
+## Recommendations
+1. **Line X-Y**: [specific change needed]
+2. **Line X-Y**: [specific change needed]
+
+## Conclusion
+[2-3 paragraphs with final assessment]
+
+CRITICAL REQUIREMENTS:
+- Quote EXACT text with LINE NUMBERS for every issue
+- Provide SPECIFIC recommendations for each quoted line
+- Review EVERY section line-by-line
+- Include at least 15-20 line-specific issues
+- Format: **Line X**: "exact text" then Issue and Recommendation
 """
 
     def _format_domain_criteria(self, domain_criteria: Dict[str, List[str]]) -> str:

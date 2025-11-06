@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from '../services/axiosConfig';
 import rateLimiter from '../services/rateLimiter';
 
@@ -6,6 +6,9 @@ const UploadForm = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [submissionId, setSubmissionId] = useState(null);
+  const [submissionData, setSubmissionData] = useState(null);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
@@ -47,6 +50,26 @@ const UploadForm = ({ onUploadSuccess }) => {
     setDragOver(false);
   };
 
+  useEffect(() => {
+    let interval;
+    if (processing && submissionId) {
+      interval = setInterval(async () => {
+        try {
+          const response = await axios.get(`/api/v1/submissions/${submissionId}/report`);
+          if (!response.data.processing) {
+            setProcessing(false);
+            setCompleted(true);
+            setSubmissionData(response.data);
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('Status check error:', err);
+        }
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [processing, submissionId]);
+
   const handleUpload = async () => {
     if (!file) {
       setError('Please select a file');
@@ -65,7 +88,9 @@ const UploadForm = ({ onUploadSuccess }) => {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
       );
-      onUploadSuccess(response.data.submission_id);
+      const subId = response.data.submission_id;
+      setSubmissionId(subId);
+      onUploadSuccess(subId);
       setProcessing(true);
       setFile(null);
     } catch (err) {
@@ -73,6 +98,39 @@ const UploadForm = ({ onUploadSuccess }) => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleViewReview = () => {
+    window.open(`/review/${submissionId}`, '_blank');
+  };
+
+  const handleDownloadReview = async () => {
+    try {
+      const response = await axios.get(`/api/v1/submissions/${submissionId}/download`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const baseName = submissionData?.title?.replace(/\.[^/.]+$/, '') || 'review';
+      link.setAttribute('download', `${baseName}_reviewed.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+      setError('Failed to download review');
+    }
+  };
+
+  const handleNewUpload = () => {
+    setCompleted(false);
+    setProcessing(false);
+    setSubmissionId(null);
+    setSubmissionData(null);
+    setFile(null);
+    setError('');
   };
 
   return (
@@ -115,11 +173,28 @@ const UploadForm = ({ onUploadSuccess }) => {
 
       {error && <div className="error">❌ {error}</div>}
 
-      {processing ? (
+      {completed ? (
+        <div className="completion-message">
+          <div className="success-icon">✅</div>
+          <h3>Review Complete!</h3>
+          <p>Your manuscript analysis is ready.</p>
+          <div className="action-buttons">
+            <button className="view-button" onClick={handleViewReview}>
+              👁️ View Review
+            </button>
+            <button className="download-button" onClick={handleDownloadReview}>
+              📥 Download Review
+            </button>
+          </div>
+          <button className="new-upload-button" onClick={handleNewUpload}>
+            📄 Upload Another Document
+          </button>
+        </div>
+      ) : processing ? (
         <div className="processing-message">
           <div className="loading-spinner"></div>
           <p>📊 Review in progress...</p>
-          <p>You'll be notified when the analysis is complete.</p>
+          <p>This typically takes 2-5 minutes. Please wait...</p>
         </div>
       ) : (
         <button

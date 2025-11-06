@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
-import UploadForm from '../components/UploadForm';
+import rateLimiter from '../services/rateLimiter';
 import './EditorDashboard.css';
 
 const EditorDashboard = () => {
@@ -19,6 +19,10 @@ const EditorDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [decision, setDecision] = useState({ decision: '', comments: '' });
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -123,6 +127,53 @@ const EditorDashboard = () => {
     navigate('/login');
   };
 
+  const handleFileChange = (selectedFile) => {
+    if (selectedFile) {
+      const fileExt = selectedFile.name.split('.').pop().toLowerCase();
+      if (!['pdf', 'docx'].includes(fileExt)) {
+        setUploadError('Only PDF and DOCX files are allowed');
+        setFile(null);
+        return;
+      }
+      setUploadError('');
+      setFile(selectedFile);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFileChange(e.dataTransfer.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setUploadError('Please select a file');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      await rateLimiter.makeRequest('upload', () =>
+        axios.post('/api/v1/submissions/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      );
+      setFile(null);
+      setActiveTab('submissions');
+      fetchDashboardData();
+    } catch (err) {
+      setUploadError(err.response?.data?.detail || err.message || 'Network error occurred');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="editor-dashboard">
       <div className="dashboard-header">
@@ -138,14 +189,77 @@ const EditorDashboard = () => {
 
       <div className="dashboard-tabs">
         <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload</button>
+        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload Manuscript</button>
         <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>All Submissions</button>
         <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
       </div>
 
       {activeTab === 'upload' && (
         <div className="upload-tab">
-          <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); fetchDashboardData(); }} />
+          <div className="upload-card">
+            <div className="upload-header">
+              <h3>📄 Upload Academic Manuscript</h3>
+              <p>Submit your PDF or DOCX file for comprehensive AI-powered review</p>
+            </div>
+
+            <div
+              className={`file-drop-zone ${dragOver ? 'dragover' : ''}`}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+              onClick={() => document.getElementById('file-input-editor').click()}
+            >
+              <div className="drop-content">
+                <div className="drop-icon">📁</div>
+                <p className="drop-title">Drop your file here or click to browse</p>
+                <p className="drop-subtitle">Supported formats: PDF, DOCX • Maximum size: 50MB</p>
+              </div>
+            </div>
+
+            <input
+              id="file-input-editor"
+              type="file"
+              onChange={(e) => handleFileChange(e.target.files[0])}
+              accept=".pdf,.docx"
+              style={{ display: 'none' }}
+            />
+
+            {file && (
+              <div className="selected-file">
+                <span>📎 {file.name}</span>
+                <span className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+              </div>
+            )}
+
+            {uploadError && <div className="error-message">❌ {uploadError}</div>}
+
+            <button
+              className="btn-upload"
+              onClick={handleUpload}
+              disabled={uploading || !file}
+            >
+              {uploading ? (
+                <>
+                  <div className="spinner-small"></div>
+                  Uploading...
+                </>
+              ) : (
+                '🚀 Start Review'
+              )}
+            </button>
+
+            <div className="upload-info">
+              <h4>What happens next?</h4>
+              <ul>
+                <li>🔬 Methodology analysis by AI agents</li>
+                <li>📚 Literature review and citation check</li>
+                <li>✍️ Clarity and writing quality assessment</li>
+                <li>⚖️ Ethics and compliance evaluation</li>
+                <li>📊 Comprehensive final report generation</li>
+              </ul>
+              <p className="info-note">Average processing time: 2-5 minutes</p>
+            </div>
+          </div>
         </div>
       )}
 

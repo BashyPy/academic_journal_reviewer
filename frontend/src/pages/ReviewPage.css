@@ -1,0 +1,31 @@
+.review-page {
+  min-height: 100vh;
+  padding: 20px;
+  background: linear-gradient(rgba(0,0,0,0.05), rgba(0,0,0,0.05));
+}
+
+.review-page-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.review-page-header h1 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 2rem;
+}
+
+@media (max-width: 768px) {
+  .review-page {
+    padding: 10px;
+  }
+
+  .review-page-header h1 {
+    font-size: 1.5rem;
+  }
+}

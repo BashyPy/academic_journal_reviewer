@@ -87,9 +87,10 @@ class PDFReportGenerator:
         try:
             return Paragraph(text, style)
         except Exception:
+            style_name = getattr(style, "name", "unknown")
             self.logger.error(
                 Exception(
-                    f"Failed to create Paragraph with style {getattr(style, 'name', 'unknown')}, falling back to Normal"
+                    f"Failed to create Paragraph with style {style_name}, fallback to Normal"
                 ),
                 {"component": "pdf_generator", "function": "_safe_paragraph"},
             )
@@ -101,7 +102,7 @@ class PDFReportGenerator:
 
     def generate_pdf_report(self, review_content: str, submission_info: Dict[str, Any]) -> BytesIO:
         """
-        Generate a PDF report from review_content and submission_info with validation and robust error handling.
+        Generate a PDF report from review_content and submission_info.
         """
         # Validate inputs early to fail fast with clear errors
         if not isinstance(review_content, str):
@@ -120,26 +121,29 @@ class PDFReportGenerator:
         )
         # Initialize the story flowable list before use
         story: List[Any] = []
-        # Header with robust error handling
-        try:
-            story.extend(self._create_header(submission_info))
-        except Exception:
-            self.logger.error(
-                Exception("Failed to create PDF header; continuing with minimal header"),
-                {"component": "pdf_generator", "function": "generate_pdf_report"},
-            )
-            # Add a minimal header so PDF still generates
-            story.append(
-                self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
-            )
-            story.append(Spacer(1, 10))
-            # Add a minimal header so PDF still generates
-            story.append(
-                self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
-            )
-            story.append(Spacer(1, 10))
-
+        # Header
+        title = submission_info.get("title", "Untitled Manuscript")
+        story.append(self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"]))
         story.append(Spacer(1, 10))
+        story.append(
+            self._safe_paragraph(
+                f"<b>Manuscript:</b> {self._escape_text(str(title))}",
+                self.styles["AcademicBodyText"],
+            )
+        )
+        if "authors" in submission_info:
+            authors = submission_info["authors"]
+            story.append(
+                self._safe_paragraph(
+                    f"<b>Authors:</b> {self._escape_text(str(authors))}",
+                    self.styles["AcademicBodyText"],
+                )
+            )
+        date_str = datetime.now().strftime("%B %d, %Y")
+        story.append(
+            self._safe_paragraph(f"<b>Review Date:</b> {date_str}", self.styles["AcademicBodyText"])
+        )
+        story.append(Spacer(1, 20))
 
         # Add prominent disclaimer at top — keep style attributes to those supported by ReportLab
         disclaimer_style = ParagraphStyle(
@@ -152,51 +156,49 @@ class PDFReportGenerator:
         )
 
         disclaimer_text = (
-            "<b>⚠️ HUMAN OVERSIGHT REQUIRED:</b> This AI-generated review is for preliminary assessment only. "
-            "Human expert validation is mandatory before any editorial decisions. "
-            "Do not use for final publication decisions without qualified human reviewer approval."
+            "<b>⚠️ HUMAN OVERSIGHT REQUIRED:</b> This AI-generated review is for "
+            "preliminary assessment only. Human expert validation is mandatory before "
+            "any editorial decisions. Do not use for final publication decisions without "
+            "qualified human reviewer approval."
         )
 
         story.append(self._safe_paragraph(disclaimer_text, disclaimer_style))
         story.append(Spacer(1, 20))
 
-        # Parse and format content with defensive checks
-        try:
-            parsed = self._parse_review_content(review_content)
-            if not isinstance(parsed, list):
-                raise RuntimeError("Parsed review content must be a list of flowables")
-            story.extend(parsed)
-        except Exception:
-            self.logger.error(
-                Exception("Failed to parse review content; inserting error notice into PDF"),
-                {"component": "pdf_generator", "function": "generate_pdf_report"},
-            )
+        # Parse and format content
+        if not review_content or review_content.strip() == "":
             story.append(
                 self._safe_paragraph(
-                    "Unable to parse review content. See server logs for details.",
+                    "Review failed due to system error. Please try again or contact support.",
                     self.styles["AcademicBodyText"],
                 )
             )
+        else:
+            try:
+                parsed = self._parse_review_content(review_content)
+                if parsed and isinstance(parsed, list):
+                    story.extend(parsed)
+                else:
+                    story.append(
+                        self._safe_paragraph(review_content, self.styles["AcademicBodyText"])
+                    )
+            except Exception:
+                self.logger.error(
+                    Exception("Failed to parse review content; using raw content"),
+                    {"component": "pdf_generator", "function": "generate_pdf_report"},
+                )
+                story.append(self._safe_paragraph(review_content, self.styles["AcademicBodyText"]))
 
         # Footer
         story.append(Spacer(1, 30))
-        try:
-            footer = self._create_footer()
-            if not isinstance(footer, list):
-                raise RuntimeError("Footer must be a list of flowables")
-            story.extend(footer)
-        except Exception:
-            self.logger.error(
-                Exception("Failed to create footer; adding minimal footer"),
-                {"component": "pdf_generator", "function": "generate_pdf_report"},
-            )
-            story.append(
-                self._safe_paragraph(
-                    "Generated by Academic Review Generator.", self.styles["Normal"]
-                )
-            )
+        footer_text = (
+            "This review was generated by the Academic Agentic Review Intelligence "
+            "System (AARIS). The analysis combines multiple specialized AI agents to "
+            "provide comprehensive academic evaluation."
+        )
+        story.append(self._safe_paragraph(footer_text, self.styles["Normal"]))
 
-        # Build document with error handling and clear exception propagation
+        # Build document
         try:
             doc.build(story)
             buffer.seek(0)
@@ -204,49 +206,6 @@ class PDFReportGenerator:
         except Exception as e:
             self.logger.error(e, {"component": "pdf_generator", "function": "generate_pdf_report"})
             raise RuntimeError("PDF generation failed") from e
-
-        # Title
-        title = submission_info.get("title", DEFAULT_REPORT_TITLE)
-        elements.append(
-            self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
-        )
-        elements.append(Spacer(1, 10))
-        title = submission_info.get("title", DEFAULT_REPORT_TITLE)
-        elements.append(
-            self._safe_paragraph(DEFAULT_REPORT_TITLE, self.styles["AcademicReportTitle"])
-        )
-        elements.append(Spacer(1, 10))
-
-        # Manuscript info
-        try:
-            elements.append(
-                self._safe_paragraph(
-                    f"<b>Manuscript:</b> {self._escape_text(str(title))}",
-                    self.styles["AcademicBodyText"],
-                )
-            )
-        except Exception:
-            self.logger.exception("Failed to add manuscript info to header")
-
-        if "authors" in submission_info:
-            try:
-                authors = submission_info["authors"]
-                elements.append(
-                    self._safe_paragraph(
-                        f"<b>Authors:</b> {self._escape_text(str(authors))}",
-                        self.styles["AcademicBodyText"],
-                    )
-                )
-            except Exception:
-                self.logger.exception("Failed to add authors to header")
-
-        # Date
-        date_str = datetime.now().strftime("%B %d, %Y")
-        elements.append(
-            self._safe_paragraph(f"<b>Review Date:</b> {date_str}", self.styles["AcademicBodyText"])
-        )
-
-        return elements
 
     def _parse_review_content(self, content: str) -> list:
         elements: List[Any] = []
@@ -338,18 +297,6 @@ class PDFReportGenerator:
                 {"component": "pdf_generator", "function": "_clean_markdown"},
             )
             return self._escape_text(text)
-
-    def _create_footer(self) -> list:
-        elements: List[Any] = []
-        elements.append(Spacer(1, 20))
-
-        footer_text = (
-            "This review was generated by the Academic Agentic Review Intelligence System (AARIS). "
-            "The analysis combines multiple specialized AI agents to provide comprehensive academic evaluation."
-        )
-
-        elements.append(self._safe_paragraph(footer_text, self.styles["Normal"]))
-        return elements
 
     def generate_review_pdf(self, submission: Dict[str, Any], review_content: str) -> BytesIO:
         """Generate PDF for review report - matches API call signature"""

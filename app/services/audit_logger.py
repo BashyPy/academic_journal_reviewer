@@ -57,5 +57,22 @@ class AuditLogger:
             severity="info" if success else "warning",
         )
 
+    async def log_submission(
+        self,
+        submission_id: str,
+        user_id: str,
+        user_email: str,
+        ip_address: Optional[str] = None,
+    ):
+        """Log manuscript submission"""
+        await self.log_event(
+            event_type="manuscript_submission",
+            user_id=user_id,
+            user_email=user_email,
+            ip_address=ip_address,
+            details={"submission_id": submission_id},
+            severity="info",
+        )
+
 
 audit_logger = AuditLogger()
