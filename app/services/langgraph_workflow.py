@@ -26,7 +26,7 @@ class EnhancedReviewState(TypedDict):
     retry_count: int
 
 
-class EnhancedLangGraphWorkflow:
+class EnhancedLangGraphWorkflow:  # pylint: disable=too-few-public-methods
     def __init__(self):
         self.domain_detector = DomainDetector()
         self.issue_deduplicator = IssueDeduplicator()
@@ -35,7 +35,7 @@ class EnhancedLangGraphWorkflow:
         self.workflow = self._build_workflow()
 
     def _build_workflow(self) -> StateGraph:
-        """Construct the StateGraph by delegating node registration and edge wiring to helper methods for clarity."""
+        """Construct the StateGraph."""
         workflow = StateGraph(EnhancedReviewState)
 
         # register nodes in one place to simplify future changes
@@ -47,7 +47,7 @@ class EnhancedLangGraphWorkflow:
         return workflow.compile(checkpointer=self.memory)
 
     def _register_nodes(self, workflow: StateGraph) -> None:
-        """Register workflow nodes (actions) in a single method to improve discoverability."""
+        """Register workflow nodes."""
         workflow.add_node("initialize", self._initialize_review)
         workflow.add_node("create_embeddings", self._create_embeddings)
         workflow.add_node("parallel_reviews", self._parallel_reviews)
@@ -100,8 +100,8 @@ class EnhancedLangGraphWorkflow:
             }
             state["embeddings_created"] = False
             return state
-        except Exception as e:
-            import traceback
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            import traceback  # pylint: disable=import-outside-toplevel
 
             self.logger.error(
                 "Exception during initialize_review",
@@ -133,54 +133,155 @@ class EnhancedLangGraphWorkflow:
                 state["embeddings_created"] = True
             else:
                 state["embeddings_created"] = False
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error(e, additional_info={"stage": "create_embeddings"})
             state["embeddings_created"] = False
         return state
 
-    async def _parallel_reviews(self, state: EnhancedReviewState) -> EnhancedReviewState:
-        # Small method-specific runners to keep branching minimal
+    async def _parallel_reviews(  # pylint: disable=too-many-locals
+        self, state: EnhancedReviewState
+    ) -> EnhancedReviewState:
+        # Import native agents to leverage their rich prompts
+        from app.agents.specialist_agents import (  # pylint: disable=import-outside-toplevel
+            ClarityAgent,
+            EthicsAgent,
+            LiteratureAgent,
+            MethodologyAgent,
+        )
+        from app.services.manuscript_analyzer import (  # pylint: disable=import-outside-toplevel
+            manuscript_analyzer,
+        )
+
+        # Analyze manuscript structure for context
+        sections = manuscript_analyzer.analyze_structure(state["content"])
+        manuscript_length = len(state["content"].split())
+
+        # Create section summary
+        section_info = "\n".join(
+            [
+                f"- {name.title()}: {data['word_count']} words "
+                f"(lines {min([l[0] for l in data['content']] or [0])}-"
+                f"{max([l[0] for l in data['content']] or [0])})"
+                for name, data in sections.items()
+                if data["content"]
+            ]
+        )
+
+        # Small method-specific runners using native agent prompts
         async def _domain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
-            return await langchain_service.domain_aware_review(
-                content, state["domain"], kind, enhanced_context
-            )
+            # Get native agent system prompt
+            agent_map = {
+                "methodology": MethodologyAgent(),
+                "literature": LiteratureAgent(),
+            }
+            agent = agent_map.get(kind)
+            if not agent:
+                return await langchain_service.domain_aware_review(
+                    content, state["domain"], kind, enhanced_context
+                )
+
+            # Build rich prompt using native agent's system prompt
+            system_prompt = agent.get_system_prompt()
+            rich_prompt = f"""
+{system_prompt}
+
+MANUSCRIPT STRUCTURE:
+{section_info}
+Total: {manuscript_length} words
+
+REVIEW REQUIREMENTS:
+- Reference specific sections and line numbers
+- Quote exact text for each issue
+- Prioritize by severity: major (critical flaws) > moderate (important improvements) > minor (suggestions)
+- Provide section-specific recommendations
+- Focus on your expertise area
+
+MANUSCRIPT CONTENT:
+Title: {state['title']}
+Domain: {state['domain']}
+
+{content}
+
+Provide comprehensive analysis with:
+1. Score (0-10) with justification
+2. Detailed findings with quoted text and line references
+3. Severity classification (major/moderate/minor)
+4. Section-specific recommendations
+5. Confidence level (0-1)
+6. Bias check confirmation
+"""
+            return await langchain_service.invoke_with_rag(rich_prompt, context=enhanced_context)
 
         async def _chain_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
             if kind == "clarity":
+                # Use native ClarityAgent prompt
+                clarity_agent = ClarityAgent()
+                system_prompt = clarity_agent.get_system_prompt()
                 prompt = f"""
-Perform comprehensive clarity assessment of this {state['domain']} manuscript:
+{system_prompt}
 
+MANUSCRIPT STRUCTURE:
+{section_info}
+Total: {manuscript_length} words
+
+REVIEW REQUIREMENTS:
+- Reference specific sections and line numbers
+- Quote exact unclear passages
+- Prioritize by severity: major (critical clarity issues) > moderate (important improvements) > minor (suggestions)
+- Provide concrete improvement suggestions
+- Focus on clarity, not stylistic preferences
+
+MANUSCRIPT CONTENT:
 Title: {state['title']}
-Content Sample: {content}
+Domain: {state['domain']}
 
-Analyze:
-1. Writing quality and academic tone
-2. Logical flow and organization
-3. Technical terminology usage
-4. Figure/table clarity
-5. Overall readability
+{content}
 
-Provide detailed feedback with specific examples and scores.
+Provide structured clarity assessment with:
+1. Score (0-10) based on communication effectiveness
+2. Specific unclear passages with quotes and line numbers
+3. Logical flow and organization issues
+4. Technical accuracy concerns
+5. Figure/table clarity assessment
+6. Concrete recommendations for improvement
+7. Confidence level and bias check
 """
                 return await langchain_service.chain_of_thought_analysis(prompt, enhanced_context)
             return await langchain_service.chain_of_thought_analysis(content, enhanced_context)
 
         async def _multi_runner(kind: str, content: str, enhanced_context: Dict[str, Any]) -> str:
             if kind == "ethics":
+                # Use native EthicsAgent prompt
+                ethics_agent = EthicsAgent()
+                system_prompt = ethics_agent.get_system_prompt()
                 prompt = f"""
-Conduct thorough ethical evaluation of this {state['domain']} manuscript:
+{system_prompt}
 
+MANUSCRIPT STRUCTURE:
+{section_info}
+Total: {manuscript_length} words
+
+REVIEW REQUIREMENTS:
+- Reference specific sections and line numbers
+- Quote exact text showing ethical concerns
+- Prioritize by severity: major (critical ethical issues) > moderate (important concerns) > minor (suggestions)
+- Provide practical guidance for compliance
+- Consider cultural and institutional context
+
+MANUSCRIPT CONTENT:
 Title: {state['title']}
-Content Sample: {content}
+Domain: {state['domain']}
 
-Evaluate:
-1. Research ethics compliance
-2. Data privacy and consent
-3. Potential bias and fairness
-4. Transparency and reproducibility
-5. Conflict of interest disclosure
+{content}
 
-Provide comprehensive ethical assessment with recommendations.
+Provide comprehensive ethical evaluation with:
+1. Score (0-10) based on ethical compliance
+2. Specific ethical concerns with quoted evidence
+3. Informed consent and privacy assessment
+4. Conflict of interest evaluation
+5. Research integrity indicators
+6. Practical recommendations for improvement
+7. Confidence level and bias check
 """
                 return await langchain_service.multi_model_consensus(prompt, enhanced_context)
             return await langchain_service.multi_model_consensus(content, enhanced_context)
@@ -204,7 +305,7 @@ Provide comprehensive ethical assessment with recommendations.
                     return f"{kind.title()} review failed due to internal error."
 
                 return await runner(kind, content, enhanced_context)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 self.logger.error(e, additional_info={"review_type": kind})
                 return f"{kind.title()} review failed due to internal error."
 
@@ -218,8 +319,8 @@ Provide comprehensive ethical assessment with recommendations.
 
         try:
             results = await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            import traceback
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            import traceback  # pylint: disable=import-outside-toplevel
 
             self.logger.error(e, additional_info={"stage": "parallel_reviews"})
             state.setdefault("errors", []).append(
@@ -237,7 +338,7 @@ Provide comprehensive ethical assessment with recommendations.
             ]
 
         # Normalize results and record any exceptions
-        import traceback
+        import traceback  # pylint: disable=import-outside-toplevel
 
         keys = ["methodology", "literature", "clarity", "ethics"]
         reviewed_results = {}
@@ -283,16 +384,30 @@ Provide comprehensive ethical assessment with recommendations.
     async def _synthesize_report(self, state: EnhancedReviewState) -> EnhancedReviewState:
         try:
             # Use the synthesis agent for final report generation
-            from app.agents.synthesis_agent import SynthesisAgent
+            from app.agents.synthesis_agent import (  # pylint: disable=import-outside-toplevel
+                SynthesisAgent,
+            )
+            from app.services.domain_detector import (  # pylint: disable=import-outside-toplevel
+                domain_detector,
+            )
 
             synthesis_agent = SynthesisAgent()
 
-            # Prepare context for synthesis agent
+            # Detect domain and get domain-specific configuration
+            submission_data = {
+                "title": state["title"],
+                "content": state["content"],
+            }
+            domain_info = domain_detector.detect_domain(submission_data)
+
+            # Prepare enriched context for synthesis agent
             context = {
                 "submission": {
                     "title": state["title"],
                     "content": state["content"],
                     "_id": state["submission_id"],
+                    "domain": domain_info.get("primary_domain", "general"),
+                    "metadata": state.get("metadata", {}),
                 },
                 "critiques": [
                     state["methodology_critique"],
@@ -300,22 +415,25 @@ Provide comprehensive ethical assessment with recommendations.
                     state["clarity_critique"],
                     state["ethics_critique"],
                 ],
+                "domain_info": domain_info,
             }
 
+            # Generate final report using synthesis agent's rich formatting
             final_report = await synthesis_agent.generate_final_report(context)
             state["final_report"] = final_report
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error(e, additional_info={"stage": "synthesize_report"})
             # Provide a basic fallback report
             state["final_report"] = (
-                f"Review synthesis failed: {str(e)}. Individual agent reviews completed successfully."
+                f"Review synthesis failed: {str(e)}. "
+                f"Individual agent reviews completed successfully."
             )
 
         return state
 
     def _extract_score(self, response: str) -> int:
-        import re
+        import re  # pylint: disable=import-outside-toplevel
 
         score_match = re.search(r"Score:\s*(\d+)", response)
         return int(score_match.group(1)) if score_match else 7
@@ -323,7 +441,9 @@ Provide comprehensive ethical assessment with recommendations.
     def _format_critiques(self, critiques: List[Dict[str, Any]]) -> str:
         formatted = []
         for critique in critiques:
-            formatted.append(f"{critique['agent_type'].title()}: {critique['content'][:500]}...")
+            formatted.append(
+                f"{critique['agent_type'].title()}: " f"{critique['content'][:500]}..."
+            )
         return "\n\n".join(formatted)
 
     async def execute_review(self, submission_data: Dict[str, Any]) -> str:
@@ -346,14 +466,14 @@ Provide comprehensive ethical assessment with recommendations.
 
             config = {
                 "configurable": {"thread_id": str(submission_data.get("_id", "unknown"))},
-                "recursion_limit": 50,  # Increase from default 25 to 50
+                "recursion_limit": 50,
             }
             final_state = await self.workflow.ainvoke(initial_state, config)
             return {
                 "final_report": final_state.get("final_report", "Review completed with errors"),
                 "domain": final_state.get("domain", "general"),
             }
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error(
                 e,
                 additional_info={
@@ -361,7 +481,7 @@ Provide comprehensive ethical assessment with recommendations.
                     "submission_id": submission_data.get("_id"),
                 },
             )
-            return "Review failed due to system error. Please try again or contact support."
+            return "Review failed due to system error. " "Please try again or contact support."
 
     def _should_retry_reviews(self, state: EnhancedReviewState) -> str:
         """Determine if reviews need retry based on quality checks."""
