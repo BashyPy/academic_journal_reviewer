@@ -1,0 +1,45 @@
+# AARIS Testing Environment
+services:
+  backend-test:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: aaris-backend-test
+    environment:
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - DEFAULT_LLM=${DEFAULT_LLM}
+      - TESTING=true
+      - JWT_SECRET=${JWT_SECRET}
+      - APP_ID=${APP_ID}
+    env_file:
+      - ../.env.test
+    volumes:
+      - ../app:/app/app
+      - ../tests:/app/tests
+    depends_on:
+      mongodb-test:
+        condition: service_healthy
+    networks:
+      - aaris-test-network
+    command: ["pytest", "tests/", "-v", "--cov=app", "--cov-report=term-missing"]
+
+  mongodb-test:
+    image: mongo:7.0
+    container_name: aaris-mongodb-test
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGODB_DATABASE}
+    tmpfs:
+      - /data/db
+    networks:
+      - aaris-test-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  aaris-test-network:
+    driver: bridge

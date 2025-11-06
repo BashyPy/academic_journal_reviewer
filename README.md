@@ -3,9 +3,10 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
 [![MongoDB](https://img.shields.io/badge/MongoDB-6.0+-green.svg)](https://mongodb.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Latest-purple.svg)](https://langchain.com/langgraph)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-An advanced AI-powered system for comprehensive academic manuscript review using multi-agent architecture. AARIS combines specialized AI agents to provide structured, domain-aware analysis of academic papers across 21+ disciplines.
+An enterprise-grade AI-powered academic manuscript review system using LangGraph workflow orchestration and multi-agent architecture. AARIS provides comprehensive, domain-aware analysis of academic papers across 21+ disciplines with advanced security, authentication, and role-based access control.
 
 ## ⚠️ Important Disclaimer
 
@@ -15,30 +16,66 @@ An advanced AI-powered system for comprehensive academic manuscript review using
 
 ### LangGraph Workflow Architecture
 
-- **Orchestrator**: Coordinates LangGraph workflow execution
-- **LangGraph Workflow**: Parallel processing of all specialist analyses
-- **LangChain Service**: Multi-LLM support with RAG capabilities
-- **Domain Detection**: Automatically identifies academic discipline (21+ domains)
+- **LangGraph StateGraph**: Stateful workflow with memory checkpointing
+- **Parallel Agent Execution**: Concurrent methodology, literature, clarity, and ethics reviews
+- **LangChain Integration**: RAG-enabled analysis with vector embeddings
+- **Conditional Routing**: Quality-based retry logic with automatic fallback
+- **Domain Detection**: ML-based identification of 21+ academic disciplines
+- **Manuscript Analysis**: Structural analysis with section-aware prompts
 
 ### Advanced Capabilities
 
-- **Parallel Processing**: All specialist agents run concurrently via LangGraph
-- **RAG Integration**: Semantic search and context retrieval with LangChain
-- **Multi-Model Consensus**: Critical decisions use multiple AI models
-- **Domain-Aware Reviews**: Tailored criteria for each academic field
-- **Issue Deduplication**: Eliminates redundant findings across analyses
-- **Guardrails System**: Ensures ethical and professional output
-- **PDF Generation**: Professional, formatted review reports
-- **File Downloads**: Role-based access to original manuscripts and review PDFs
-- **Multi-LLM Support**: OpenAI, Anthropic, Google Gemini, Groq
-- **Super Admin Dashboard**: Comprehensive system management and monitoring
-  - User management with role-based access control
-  - Real-time submission monitoring and reprocessing
-  - Security audit logging and IP tracking
-  - Performance metrics and analytics
-  - API key management
-- **Dual Authentication**: JWT tokens and API keys for flexible access
-- **Passkey Authentication**: Biometric login with fingerprint/Face ID support
+#### AI & Workflow
+
+- **LangGraph Orchestration**: StateGraph-based workflow with memory persistence
+- **Parallel Processing**: Async execution of all specialist agents
+- **RAG Integration**: Vector embeddings with semantic search (LangChain)
+- **Multi-Model Consensus**: Critical ethics reviews use multiple LLMs
+- **Chain-of-Thought**: Step-by-step reasoning for clarity analysis
+- **Domain-Aware Prompts**: Specialized review criteria per academic field
+- **Issue Deduplication**: Intelligent elimination of redundant findings
+- **Quality Retry Logic**: Automatic re-processing of low-quality reviews
+
+#### Security & Authentication
+
+- **Dual Authentication**: JWT tokens + API keys with request signing
+- **Passkey/WebAuthn**: Biometric authentication (fingerprint/Face ID)
+- **2FA/TOTP**: Time-based one-time passwords with QR code generation
+- **OTP Email Verification**: Temporary code-based authentication
+- **WAF Middleware**: SQL injection, XSS, and path traversal protection
+- **Rate Limiting**: IP-based throttling with concurrent processing limits
+- **Security Monitoring**: Real-time threat detection and IP blocking
+- **Audit Logging**: Comprehensive activity tracking with 90-day retention
+
+#### Role-Based Access Control
+
+- **5 User Roles**: Author, Reviewer, Editor, Admin, Super Admin
+- **Permission System**: Granular access control per endpoint
+- **Role Hierarchy**: Inherited permissions with escalation paths
+- **API Key Scoping**: Role-specific API key generation
+
+#### Dashboard System
+
+- **Author Dashboard**: Personal submission tracking and analytics
+- **Reviewer Dashboard**: Peer review management with scoring system
+- **Editor Dashboard**: Editorial decisions and workflow management
+- **Admin Dashboard**: Operational monitoring (30-day audit logs)
+- **Super Admin Dashboard**: Full system control (90-day audit logs)
+
+#### Document Processing
+
+- **Multi-Format Support**: PDF and DOCX parsing
+- **Manuscript Analysis**: Section detection and structural analysis
+- **PDF Generation**: Professional review reports with ReportLab
+- **File Downloads**: Role-based access to manuscripts and reports
+- **Document Caching**: Redis-compatible caching with TTL
+
+#### LM Integration
+
+- **Multi-Provider Support**: OpenAI, Anthropic, Google Gemini, Groq
+- **Fallback Strategy**: Automatic provider switching on failure
+- **Token Management**: Content truncation and length optimization
+- **Response Caching**: Intelligent caching of LLM responses
 
 ### Supported Academic Domains
 
@@ -64,21 +101,21 @@ graph TD
     B --> C[Document Parser]
     B --> D[Guardrail Middleware]
     B --> E[Orchestrator Agent]
-    
+
     E --> F1[Methodology Agent]
     E --> F2[Literature Agent]
     E --> F3[Clarity Agent]
     E --> F4[Ethics Agent]
-    
+
     F1 --> G[Synthesis Agent]
     F2 --> G
     F3 --> G
     F4 --> G
-    
+
     C --> H[Domain Detector]
     G --> I[Issue Deduplicator]
     G --> J[PDF Generator]
-    
+
     B --> K[MongoDB Database]
     E --> K
     F1 --> K
@@ -86,13 +123,13 @@ graph TD
     F3 --> K
     F4 --> K
     G --> K
-    
+
     F1 --> L[LLM Providers]
     F2 --> L
     F3 --> L
     F4 --> L
     G --> L
-    
+
     style E fill:#aaffcc,stroke:#333
     style G fill:#ffccaa,stroke:#333
     style K fill:#cccccc,stroke:#333
@@ -104,19 +141,19 @@ graph TD
 graph TD
     A[AARIS Database - MongoDB] --> B[submissions Collection]
     A --> C[agent_tasks Collection]
-    
+
     B --> D[Document Structure]
     D --> D1[_id, title, content]
     D --> D2[file_metadata]
     D --> D3[status, final_report]
     D --> D4[created_at, completed_at]
-    
+
     C --> E[Task Structure]
     E --> E1[_id, submission_id]
     E --> E2[agent_type, status]
     E --> E3[critique object]
     E --> E4[timestamps]
-    
+
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#bbf,stroke:#333,stroke-width:2px
@@ -131,25 +168,25 @@ graph TD
     C --> D[Detect Academic Domain]
     D --> E[Save to MongoDB]
     E --> F[Trigger Orchestrator Agent]
-    
+
     F --> G[Create Parallel Agent Tasks]
     G --> H1[Methodology Agent]
     G --> H2[Literature Agent]
     G --> H3[Clarity Agent]
     G --> H4[Ethics Agent]
-    
+
     H1 --> I[Call LLM APIs]
     H2 --> I
     H3 --> I
     H4 --> I
-    
+
     I --> J[Save Agent Results]
     J --> K[Synthesis Agent]
     K --> L[Deduplicate Issues]
     L --> M[Generate Final Report]
     M --> N[Save PDF Report]
     N --> O[Return to Client]
-    
+
     style F fill:#aaffcc,stroke:#333
     style K fill:#ffccaa,stroke:#333
     style N fill:#ccaaff,stroke:#333
@@ -173,7 +210,7 @@ graph TD
     L --> M[13. Auto-refresh Until Complete]
     M --> N[14. Download PDF Report]
     N --> O[15. Editorial Decision]
-    
+
     style A fill:#e8f2ff,stroke:#333
     style O fill:#e8f2ff,stroke:#333
     style D fill:#f3e5f5,stroke:#333
@@ -182,33 +219,37 @@ graph TD
 
 ## 📋 Prerequisites
 
-- Python 3.11+
-- MongoDB (local or Atlas)
-- LLM API keys (at least one):
-  - OpenAI API key
-  - Anthropic API key
+- **Python**: 3.11 or higher
+- **MongoDB**: 6.0+ (local or Atlas)
+- **Node.js**: 16+ (for React frontend)
+- **LLM API Keys** (at least one):
+  - OpenAI API key (GPT-4/GPT-3.5)
+  - Anthropic API key (Claude)
   - Google Gemini API key
-  - Groq API key
+  - Groq API key (Llama models)
+- **Optional**: Redis (for enhanced caching)
 
 ## 🛠️ Installation
 
-### 1. Clone Repository
+### Quick Start with Makefile
 
 ```bash
+# Clone and setup
 git clone https://github.com/your-repo/academic-journal-reviewer.git
 cd academic-journal-reviewer
+make setup
+
+# Or step by step
+make venv
+source .venv/bin/activate
+make install
 ```
 
-### 2. Create Virtual Environment
+### Manual Installation
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -222,14 +263,25 @@ MONGODB_URL=mongodb://localhost:27017
 MONGODB_DATABASE=aaris
 
 # LLM API Keys (configure at least one)
-DEFAULT_LLM=openai
+DEFAULT_LLM=groq
 OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
 
-# Application
+# Security & Authentication
+JWT_SECRET=your-strong-random-secret-key-here-min-32-chars
 APP_ID=aaris-app
+
+# Email Configuration (for OTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=noreply@aaris.com
+
+# Optional: Testing
+TESTING=false
 ```
 
 ### 5. Start MongoDB
@@ -244,8 +296,19 @@ mongod
 
 ### 6. Run Application
 
+**Using Makefile (Recommended)**:
+```bash
+make dev              # Backend only
+make dev-frontend     # Frontend only
+make dev-all          # Both services
+make status           # Check status
+make stop             # Stop services
+```
+
+**Manual**:
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+cd frontend && npm install && npm start
 ```
 
 ## 📚 API Documentation
@@ -263,18 +326,45 @@ http://localhost:8000
 
 ### Key Endpoints
 
+#### Authentication
+
+```http
+# Register new user
+POST /api/v1/auth/register
+Content-Type: application/json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "full_name": "John Doe"
+}
+
+# Login with JWT
+POST /api/v1/auth/login
+Content-Type: application/json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+
+# Login with Passkey (WebAuthn)
+POST /api/v1/auth/passkey/authenticate
+
+# Enable 2FA/TOTP
+POST /api/v1/auth/totp/enable
+Authorization: Bearer <token>
+```
+
 #### Upload Manuscript
 
 ```http
 POST /api/v1/submissions/upload
+Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file: manuscript.pdf (or .docx)
 ```
 
 Initiates LangGraph workflow with parallel agent processing
-
-
 
 #### Get Final Report
 
@@ -342,16 +432,46 @@ The system automatically adjusts review criteria based on detected domain:
 
 ## 📊 Review Process Flow
 
-1. **Document Upload**: PDF/DOCX parsing and content extraction
-2. **Domain Detection**: Automatic identification of academic field
-3. **Background Processing**: All analysis runs automatically without user intervention
-4. **Methodology Analysis**: Research design, statistical methods
-5. **Literature Review**: Citation analysis, theoretical framework
-6. **Clarity Assessment**: Writing quality, presentation
-7. **Ethics Evaluation**: Research ethics, bias detection
-8. **Issue Deduplication**: Remove redundant findings
-9. **Synthesis**: Compile comprehensive final report
-10. **Auto-Display**: Report appears when processing completes
+### LangGraph Workflow Stages
+
+1. **Initialize Review**
+   - Domain detection (21+ academic fields)
+   - Context preparation with metadata
+   - State initialization
+
+2. **Create Embeddings**
+   - Vector embeddings generation
+   - RAG context preparation
+   - Semantic search enablement
+
+3. **Parallel Reviews** (Concurrent Execution)
+   - **Methodology Agent**: Research design, statistical methods, reproducibility
+   - **Literature Agent**: Citation analysis, theoretical framework, novelty
+   - **Clarity Agent**: Writing quality, logical flow, presentation
+   - **Ethics Agent**: Research ethics, bias detection, compliance
+
+4. **Quality Check & Retry**
+   - Validate review completeness
+   - Automatic retry for failed/incomplete reviews
+   - Maximum 1 retry per review type
+
+5. **Synthesize Report**
+   - Aggregate all agent findings
+   - Issue deduplication
+   - Domain-weighted scoring
+   - Professional PDF generation
+
+6. **Finalize**
+   - Update submission status
+   - Cache results (7-day TTL)
+   - Release processing slot
+   - Notify user (if configured)
+
+### Processing Time
+
+- **Average**: 2-5 minutes per manuscript
+- **Factors**: Document length, LLM provider, concurrent load
+- **Optimization**: Parallel execution, response caching, content truncation
 
 ## 🛡️ Guardrails & Safety
 
@@ -374,32 +494,123 @@ The system automatically adjusts review criteria based on detected domain:
 ```plain-text
 academic_journal_reviewer/
 ├── app/
-│   ├── agents/                 # AI agents
-│   │   ├── base_agent.py
-│   │   ├── orchestrator.py
-│   │   ├── specialist_agents.py
-│   │   └── synthesis_agent.py
-│   ├── api/                    # API routes
-│   │   ├── routes.py
-│   │   └── download_routes.py
-│   ├── core/                   # Configuration
-│   │   └── config.py
-│   ├── middleware/             # Guardrails
-│   │   └── guardrail_middleware.py
-│   ├── models/                 # Data models
-│   │   ├── schemas.py
-│   │   └── responses.py
-│   ├── services/               # Core services
-│   │   ├── domain_detector.py
-│   │   ├── guardrails.py
-│   │   ├── issue_deduplicator.py
-│   │   ├── llm_service.py
-│   │   ├── mongodb_service.py
-│   │   ├── pdf_generator.py
-│   │   └── disclaimer_service.py
-│   └── main.py                 # Application entry
-├── requirements.txt
-├── .env.example
+│   ├── agents/                      # AI Agents
+│   │   ├── base_agent.py           # Base agent class
+│   │   ├── orchestrator.py         # Workflow orchestrator
+│   │   ├── specialist_agents.py    # Methodology, Literature, Clarity, Ethics
+│   │   └── synthesis_agent.py      # Final report synthesis
+│   ├── api/                         # API Routes
+│   │   ├── routes.py               # Core submission endpoints
+│   │   ├── auth_routes.py          # Authentication (JWT, Passkey, TOTP, OTP)
+│   │   ├── author_dashboard_routes.py
+│   │   ├── reviewer_dashboard_routes.py
+│   │   ├── editor_dashboard_routes.py
+│   │   ├── admin_dashboard_routes.py
+│   │   ├── super_admin_routes.py
+│   │   ├── admin_user_routes.py    # User management
+│   │   ├── roles_routes.py         # Role management
+│   │   ├── download_routes.py      # File downloads
+│   │   └── cache_routes.py         # Cache management
+│   ├── core/
+│   │   └── config.py               # Environment configuration
+│   ├── middleware/                  # Security Middleware
+│   │   ├── auth.py                 # Base authentication
+│   │   ├── dual_auth.py            # JWT + API key auth
+│   │   ├── jwt_auth.py             # JWT validation
+│   │   ├── permissions.py          # Role-based access control
+│   │   ├── rate_limiter.py         # Rate limiting
+│   │   ├── waf.py                  # Web application firewall
+│   │   ├── request_signing.py      # Request signature validation
+│   │   └── guardrail_middleware.py # Content guardrails
+│   ├── models/                      # Data Models
+│   │   ├── schemas.py              # Core schemas
+│   │   ├── auth_schemas.py         # Authentication schemas
+│   │   ├── profile_schemas.py      # User profile schemas
+│   │   ├── roles.py                # Role definitions
+│   │   └── responses.py            # API responses
+│   ├── services/                    # Core Services
+│   │   ├── langgraph_workflow.py   # LangGraph StateGraph workflow
+│   │   ├── langchain_service.py    # LangChain + RAG integration
+│   │   ├── llm_service.py          # Multi-LLM provider management
+│   │   ├── mongodb_service.py      # Database operations
+│   │   ├── domain_detector.py      # Academic domain detection
+│   │   ├── manuscript_analyzer.py  # Document structure analysis
+│   │   ├── issue_deduplicator.py   # Finding deduplication
+│   │   ├── pdf_generator.py        # Report PDF generation
+│   │   ├── document_parser.py      # PDF/DOCX parsing
+│   │   ├── user_service.py         # User management
+│   │   ├── webauthn_service.py     # Passkey authentication
+│   │   ├── totp_service.py         # 2FA/TOTP
+│   │   ├── otp_service.py          # Email OTP
+│   │   ├── otp_cleanup_service.py  # OTP expiration cleanup
+│   │   ├── email_service.py        # Email notifications
+│   │   ├── audit_logger.py         # Security audit logging
+│   │   ├── security_monitor.py     # Threat detection
+│   │   ├── cache_service.py        # Response caching
+│   │   ├── document_cache_service.py # Document caching
+│   │   ├── guardrails.py           # Content filtering
+│   │   ├── text_analysis.py        # Text processing
+│   │   ├── disclaimer_service.py   # System disclaimers
+│   │   └── init_admin.py           # Default admin creation
+│   ├── utils/                       # Utilities
+│   │   ├── logger.py               # Structured logging
+│   │   ├── validators.py           # Input validation
+│   │   ├── common_operations.py    # Shared operations
+│   │   └── request_utils.py        # Request helpers
+│   └── main.py                      # FastAPI application
+├── frontend/                        # React Frontend
+│   ├── src/
+│   │   ├── pages/                  # Dashboard pages
+│   │   │   ├── Login.js
+│   │   │   ├── Register.js
+│   │   │   ├── Profile.js
+│   │   │   ├── AuthorDashboard.js
+│   │   │   ├── ReviewerDashboard.js
+│   │   │   ├── EditorDashboard.js
+│   │   │   ├── AdminDashboard.js
+│   │   │   └── SuperAdminDashboard.js
+│   │   ├── components/
+│   │   │   ├── UploadForm.js
+│   │   │   ├── ReviewStatus.js
+│   │   │   ├── ReviewReport.js
+│   │   │   ├── PasskeyManager.js
+│   │   │   ├── PasswordStrengthMeter.js
+│   │   │   ├── SessionTimeout.js
+│   │   │   └── ProtectedRoute.js
+│   │   ├── services/
+│   │   │   ├── authService.js
+│   │   │   ├── passkeyService.js
+│   │   │   ├── axiosConfig.js
+│   │   │   └── rateLimiter.js
+│   │   └── App.js
+│   └── package.json
+├── tests/                           # Test Suite
+│   ├── unit/                       # Unit tests
+│   ├── integration/                # Integration tests
+│   ├── conftest.py                 # Pytest configuration
+│   └── test_*.py                   # Test files
+├── scripts/                         # Utility Scripts
+│   ├── start_all.sh                # Start backend + frontend
+│   ├── stop_all.sh                 # Stop all services
+│   ├── status.sh                   # Check service status
+│   ├── deploy.sh                   # Production deployment
+│   └── manage_api_keys.py          # API key management
+├── deployment/                      # Docker & Deployment
+│   ├── Dockerfile                  # Backend image
+│   ├── Dockerfile.frontend         # Frontend image
+│   ├── docker-compose.yml          # Development stack
+│   ├── docker-compose.prod.yml     # Production stack
+│   ├── nginx.conf                  # Production Nginx config
+│   ├── nginx-frontend.conf         # Frontend Nginx config
+│   ├── mongo-init.js               # MongoDB initialization
+│   ├── .dockerignore               # Build exclusions
+│   ├── .env.production.example     # Production env template
+│   └── README.md                   # Deployment guide
+├── docs/                            # Documentation
+├── diagrams/                        # Architecture diagrams
+├── .github/workflows/               # CI/CD pipelines
+├── requirements.txt                 # Python dependencies
+├── .env.example                     # Environment template
 └── README.md
 ```
 
@@ -408,44 +619,131 @@ academic_journal_reviewer/
 ### Run Tests
 
 ```bash
-pytest tests/
+# Using Makefile
+make test                # All tests
+make test-unit           # Unit tests
+make test-integration    # Integration tests
+make test-coverage       # With coverage
+make test-watch          # Watch mode
+
+# Manual
+pytest tests/ -v
 ```
 
 ### Test Coverage
 
 ```bash
-pytest --cov=app tests/
+make test-coverage
+# Or: pytest --cov=app --cov-report=term-missing tests/
 ```
+
+### Test Database Isolation
+
+Tests automatically use `aaris_test` database with automatic cleanup:
+
+- Set `TESTING=true` in `.env.test`
+- Database cleared before each test session
+- Isolated from production data
 
 ## 🚀 Deployment
 
 ### Development
 
 ```bash
-docker-compose up -d
+# Using Makefile
+make docker-dev          # Start dev environment
+make docker-dev-build    # Build and start
+make docker-dev-logs     # View logs
+make docker-dev-stop     # Stop
 ```
 
 ### Production
 
 ```bash
-# Quick deploy
-./deploy.sh
+# 1. Configure
+cp deployment/.env.production.example .env.production
 
-# Or manual
-docker-compose -f docker-compose.prod.yml up -d
+# 2. Generate SSL
+make ssl-self-signed     # Self-signed cert
+
+# 3. Check readiness
+make deploy-check
+
+# 4. Deploy
+make docker-prod         # Start production
+make docker-prod-logs    # View logs
 ```
 
-See [DEPLOYMENT.md](./docs/DEPLOYMENT.md) for detailed production setup.
+### Production Checklist
+
+```bash
+make deploy-check        # Automated checks
+```
+
+- [ ] Strong `JWT_SECRET` (min 32 chars)
+- [ ] MongoDB authentication
+- [ ] SSL certificates (`make ssl-self-signed`)
+- [ ] SMTP configuration
+- [ ] CORS origins
+- [ ] Backup strategy (`make db-backup`)
+- [ ] Health monitoring (`make health`)
 
 ### Production Features
 
-- Multi-worker Uvicorn
-- MongoDB authentication
-- Nginx reverse proxy
-- Health checks
-- Security hardening
+- **Multi-worker Uvicorn**: Concurrent request handling
+- **MongoDB Authentication**: Secure database access
+- **Nginx Reverse Proxy**: Load balancing and SSL termination
+- **Health Checks**: Automated service monitoring
+- **Security Hardening**: WAF, rate limiting, audit logging
+- **Docker Support**: Containerized deployment
+- **CI/CD Pipelines**: Automated testing and deployment
+
+See [deployment/README.md](./deployment/README.md) for detailed production setup.
+
+## 🔧 Makefile Commands
+
+Comprehensive Makefile for all operations:
+
+```bash
+make help              # Show all commands
+
+# Development
+make setup             # Complete setup
+make dev               # Run backend
+make dev-all           # Run all services
+
+# Testing
+make test              # Run tests
+make test-coverage     # With coverage
+make quality           # All quality checks
+
+# Docker
+make docker-dev        # Dev environment
+make docker-prod       # Prod environment
+make docker-clean      # Clean resources
+
+# Database
+make db-backup         # Backup MongoDB
+make db-restore        # Restore backup
+make db-shell          # MongoDB shell
+
+# Monitoring
+make health            # Health checks
+make logs              # View logs
+make docker-stats      # Resource usage
+
+# Utilities
+make clean             # Clean temp files
+make ssl-self-signed   # Generate SSL cert
+make version           # Version info
+```
 
 ## 🤝 Contributing
+
+```bash
+make pre-commit        # Before committing
+make ci                # Run CI locally
+```
 
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/amazing-feature`)
@@ -486,10 +784,11 @@ AARIS includes **five dashboards** for different user roles:
 
 ### Author Dashboard (Personal Tracking)
 
-**Access**: `http://localhost:3000/author-dashboard`  
+**Access**: `http://localhost:3000/author-dashboard`
 **Required Role**: Any authenticated user
 
 **Key Features**:
+
 - **Personal Statistics**: Track your own submission metrics
 - **My Submissions**: View and manage your manuscripts
 - **Analytics**: Timeline and domain distribution for your work
@@ -498,11 +797,13 @@ AARIS includes **five dashboards** for different user roles:
 - **Delete Submissions**: Remove your own submissions
 
 **Three Main Tabs**:
+
 1. **Overview**: Quick stats, performance metrics, recent submissions
 2. **My Submissions**: Complete list with status filters and actions
 3. **Analytics**: 30-day timeline and domain distribution
 
 **Documentation**:
+
 - [Author Dashboard Guide](./docs/AUTHOR_DASHBOARD.md)
 - [Author Dashboard Quick Start](./docs/AUTHOR_DASHBOARD_QUICK_START.md)
 
@@ -510,10 +811,11 @@ AARIS includes **five dashboards** for different user roles:
 
 ### Editor Dashboard (Editorial Management)
 
-**Access**: `http://localhost:3000/editor-dashboard`  
+**Access**: `http://localhost:3000/editor-dashboard`
 **Required Role**: `editor`, `admin`, or `super_admin`
 
 **Key Features**:
+
 - **View All Submissions**: Access manuscripts from all authors
 - **Editorial Decisions**: Accept, revise, or reject manuscripts
 - **Workflow Management**: Reprocess failed submissions
@@ -522,11 +824,13 @@ AARIS includes **five dashboards** for different user roles:
 - **Recent Activity**: Monitor latest submission updates
 
 **Three Main Tabs**:
+
 1. **Overview**: System statistics, performance metrics, recent submissions
 2. **All Submissions**: Complete submission list with filtering and actions
 3. **Analytics**: 30-day trends, domain distribution, status breakdown
 
 **Editorial Actions**:
+
 - Make formal decisions (Accept/Revise/Reject)
 - Add editorial comments
 - Reprocess failed reviews
@@ -534,6 +838,7 @@ AARIS includes **five dashboards** for different user roles:
 - Track decision history
 
 **Documentation**:
+
 - [Editor Dashboard Guide](./docs/EDITOR_DASHBOARD.md)
 - [Editor Dashboard Quick Start](./docs/EDITOR_DASHBOARD_QUICK_START.md)
 
@@ -541,10 +846,11 @@ AARIS includes **five dashboards** for different user roles:
 
 ### Reviewer Dashboard (Peer Review Management)
 
-**Access**: `http://localhost:3000/reviewer-dashboard`  
+**Access**: `http://localhost:3000/reviewer-dashboard`
 **Required Role**: `reviewer`, `editor`, `admin`, or `super_admin`
 
 **Key Features**:
+
 - **View Assigned Manuscripts**: Access manuscripts assigned for review
 - **Conduct Reviews**: Comprehensive review form with scoring system
 - **Track Review Status**: Monitor pending, in-progress, and completed reviews
@@ -553,11 +859,13 @@ AARIS includes **five dashboards** for different user roles:
 - **Quality Metrics**: Average review time and completion statistics
 
 **Three Main Tabs**:
+
 1. **Overview**: Statistics, recent assignments, performance metrics
 2. **My Assignments**: Complete list with status filters and actions
 3. **Analytics**: 30-day timeline, domain distribution, performance data
 
 **Review Features**:
+
 - Score manuscripts on multiple criteria (1-10 scale)
 - Provide strengths and weaknesses
 - Write detailed comments
@@ -565,6 +873,7 @@ AARIS includes **five dashboards** for different user roles:
 - Track review time automatically
 
 **Documentation**:
+
 - [Reviewer Dashboard Guide](./docs/REVIEWER_DASHBOARD.md)
 - [Reviewer Dashboard Quick Start](./docs/REVIEWER_DASHBOARD_QUICK_START.md)
 
@@ -574,10 +883,11 @@ AARIS also includes **two administrative dashboards** for different management r
 
 ### 1. Admin Dashboard (Operational Management)
 
-**Access**: `http://localhost:3000/admin-dashboard`  
+**Access**: `http://localhost:3000/admin-dashboard`
 **Required Role**: `admin` or `super_admin`
 
 **Key Features**:
+
 - View and manage users (limited)
 - Monitor submissions (read-only)
 - View audit logs (30 days)
@@ -585,6 +895,7 @@ AARIS also includes **two administrative dashboards** for different management r
 - View analytics and statistics
 
 **Limitations**:
+
 - Cannot view/modify super_admin accounts
 - Cannot create or delete users
 - Cannot change user roles
@@ -592,15 +903,17 @@ AARIS also includes **two administrative dashboards** for different management r
 - Cannot perform system operations
 
 **Documentation**:
+
 - [Admin vs Super Admin Comparison](./docs/ADMIN_VS_SUPER_ADMIN.md)
 - [Admin Dashboard Quick Start](./docs/ADMIN_DASHBOARD_QUICK_START.md)
 
 ### 2. Super Admin Dashboard (Full System Control)
 
-**Access**: `http://localhost:3000/super-admin`  
+**Access**: `http://localhost:3000/super-admin`
 **Required Role**: `super_admin`
 
 **Key Features**:
+
 - **User Management**: Create, edit, delete users with role assignment
 - **Submission Control**: Monitor, reprocess, and delete manuscript reviews
 - **Security Monitoring**: Audit logs (90 days), IP tracking, security statistics
@@ -609,6 +922,7 @@ AARIS also includes **two administrative dashboards** for different management r
 - **System Operations**: Cache management, health monitoring, maintenance
 
 **Full Capabilities**:
+
 - Complete user lifecycle management
 - Full submission control
 - Extended audit log access
@@ -616,6 +930,7 @@ AARIS also includes **two administrative dashboards** for different management r
 - System maintenance tools
 
 **Documentation**:
+
 - [Super Admin Dashboard README](./docs/ADMIN_DASHBOARD_README.md)
 - [Super Admin Dashboard Guide](./docs/ADMIN_DASHBOARD_GUIDE.md)
 - [Super Admin Quick Reference](./docs/ADMIN_QUICK_REFERENCE.md)
@@ -643,12 +958,14 @@ AARIS also includes **two administrative dashboards** for different management r
 ### Choosing the Right Dashboard
 
 **Use Author Dashboard for**:
+
 - Tracking your own submissions
 - Downloading review reports
 - Analyzing your submission patterns
 - Managing your manuscripts
 
 **Use Reviewer Dashboard for**:
+
 - Viewing assigned manuscripts
 - Conducting peer reviews
 - Tracking review progress
@@ -656,6 +973,7 @@ AARIS also includes **two administrative dashboards** for different management r
 - Managing review workload
 
 **Use Editor Dashboard for**:
+
 - Managing all manuscript submissions
 - Making editorial decisions
 - Monitoring review workflow
@@ -663,12 +981,14 @@ AARIS also includes **two administrative dashboards** for different management r
 - Analyzing submission trends
 
 **Use Admin Dashboard for**:
+
 - Day-to-day operations
 - User monitoring
 - Submission tracking
 - Routine API key creation
 
 **Use Super Admin Dashboard for**:
+
 - System administration
 - Critical operations
 - Performance monitoring
@@ -678,7 +998,8 @@ AARIS also includes **two administrative dashboards** for different management r
 ## 📞 Support
 
 - **Documentation**: Check API docs at `/docs`
-- **Dashboards**: 
+- **Dashboards**:
+
   - [Author Dashboard Guide](./docs/AUTHOR_DASHBOARD.md)
   - [Author Quick Start](./docs/AUTHOR_DASHBOARD_QUICK_START.md)
   - [Reviewer Dashboard Guide](./docs/REVIEWER_DASHBOARD.md)
