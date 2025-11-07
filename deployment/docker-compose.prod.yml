@@ -6,7 +6,7 @@ services:
       dockerfile: deployment/Dockerfile
     container_name: aaris-backend-prod
     environment:
-      - MONGODB_URL=mongodb://mongodb:27017/aaris
+      - MONGODB_URL=mongodb://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@mongodb:27017/aaris?authSource=admin
       - MONGODB_DATABASE=aaris
       - DEFAULT_LLM=${DEFAULT_LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -81,7 +81,11 @@ services:
     image: mongo:7.0
     container_name: aaris-mongodb-prod
     environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
       - MONGO_INITDB_DATABASE=${MONGODB_DATABASE}
+    ports:
+      - "27017:27017"
     volumes:
       - mongodb_prod_data:/data/db
       - mongodb_prod_config:/data/configdb

@@ -486,12 +486,6 @@ class LangChainService:
                 self.vector_store.aadd_documents(documents), timeout=30.0
             )
             # Handle different return types from vector store
-            # Await the result if it's a coroutine/future
-            if hasattr(result, "__await__"):
-                result = await result
-
-            if hasattr(result, "inserted_ids"):
-                return result.inserted_ids
             if isinstance(result, list):
                 return result
             # Return document count as fallback
@@ -593,12 +587,8 @@ class LangChainService:
             # Try async methods first
             if hasattr(self.vector_store, "asimilarity_search"):
                 result = await self.vector_store.asimilarity_search(query, k=k)
-                # Handle cursor objects from MongoDB
-                if hasattr(result, "to_list"):
-                    return await result.to_list(length=k)
-                if hasattr(result, "__aiter__"):
-                    return [doc async for doc in result]
-                return list(result) if result else []
+                # Result should already be a list from asimilarity_search
+                return result if isinstance(result, list) else []
 
             # Fallback to sync method in thread pool
             if hasattr(self.vector_store, "similarity_search"):

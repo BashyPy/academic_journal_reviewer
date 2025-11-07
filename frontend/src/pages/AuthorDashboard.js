@@ -205,23 +205,36 @@ const AuthorDashboard = () => {
 
   return (
     <div className="author-dashboard">
-      <div className="dashboard-header">
+      <header className="dashboard-header">
         <div>
-          <h1>Author Dashboard</h1>
-          <p>Track your manuscript submissions and reviews</p>
+          <h1>📝 Author Dashboard</h1>
         </div>
-        <div className="user-info">
-          <span>👤 {user?.name || user?.email}</span>
+        <div className="header-actions">
+          <span className="user-info">👤 {user?.name || user?.email}</span>
+          <button onClick={fetchDashboardData} className="refresh-btn">🔄 Refresh</button>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
-      </div>
+      </header>
 
-      <div className="dashboard-tabs">
-        <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
-        <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>📤 Upload Manuscript</button>
-        <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>My Submissions</button>
-        <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>Analytics</button>
-      </div>
+      <div className="dashboard-layout">
+        <aside className="sidebar">
+          <nav className="sidebar-nav">
+            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>
+              <span className="icon">📊</span> Overview
+            </button>
+            <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>
+              <span className="icon">📤</span> Upload Manuscript
+            </button>
+            <button className={activeTab === 'submissions' ? 'active' : ''} onClick={() => setActiveTab('submissions')}>
+              <span className="icon">📄</span> My Submissions
+            </button>
+            <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>
+              <span className="icon">📈</span> Analytics
+            </button>
+          </nav>
+        </aside>
+
+        <main className="dashboard-content">
 
       {activeTab === 'upload' && (
         <div className="upload-tab">
@@ -495,6 +508,8 @@ const AuthorDashboard = () => {
           </div>
         </div>
       )}
+        </main>
+      </div>
     </div>
   );
 };

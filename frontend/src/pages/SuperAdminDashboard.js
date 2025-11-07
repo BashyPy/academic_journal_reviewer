@@ -334,9 +334,12 @@ const SuperAdminDashboard = () => {
 
       {activeTab === 'upload' && (
         <div className="upload-section">
-          <h3>📄 Upload Academic Manuscript</h3>
-          <p>Submit your PDF or DOCX file for comprehensive AI-powered review</p>
           <div className="upload-card">
+            <div className="upload-header">
+              <h3>📄 Upload Academic Manuscript</h3>
+              <p>Submit your PDF or DOCX file for comprehensive AI-powered review</p>
+            </div>
+
             <div
               className={`file-drop-zone ${dragOver ? 'dragover' : ''}`}
               onDrop={handleDrop}
@@ -344,9 +347,11 @@ const SuperAdminDashboard = () => {
               onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
               onClick={() => document.getElementById('file-input-super').click()}
             >
-              <div className="drop-icon">📁</div>
-              <p className="drop-title">Drop your file here or click to browse</p>
-              <p className="drop-subtitle">Supported formats: PDF, DOCX • Maximum size: 50MB</p>
+              <div className="drop-content">
+                <div className="drop-icon">📁</div>
+                <p className="drop-title">Drop your file here or click to browse</p>
+                <p className="drop-subtitle">Supported formats: PDF, DOCX • Maximum size: 50MB</p>
+              </div>
             </div>
 
             <input

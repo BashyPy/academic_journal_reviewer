@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../services/axiosConfig';
 import authService from '../services/authService';
-import rateLimiter from '../services/rateLimiter';
+import UploadForm from '../components/UploadForm';
 import './ReviewerDashboard.css';
 
 const ReviewerDashboard = () => {
@@ -27,10 +27,6 @@ const ReviewerDashboard = () => {
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -128,151 +124,50 @@ const ReviewerDashboard = () => {
     navigate('/login');
   };
 
-  const handleFileChange = (selectedFile) => {
-    if (selectedFile) {
-      const fileExt = selectedFile.name.split('.').pop().toLowerCase();
-      if (!['pdf', 'docx'].includes(fileExt)) {
-        setUploadError('Only PDF and DOCX files are allowed');
-        setFile(null);
-        return;
-      }
-      setUploadError('');
-      setFile(selectedFile);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    handleFileChange(e.dataTransfer.files[0]);
-  };
-
-  const handleUpload = async () => {
-    if (!file) {
-      setUploadError('Please select a file');
-      return;
-    }
-
-    setUploading(true);
-    setUploadError('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      await rateLimiter.makeRequest('upload', () =>
-        axios.post('/api/v1/submissions/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-      );
-      setFile(null);
-      setActiveTab('assignments');
-      fetchDashboardData();
-    } catch (err) {
-      setUploadError(err.response?.data?.detail || err.message || 'Network error occurred');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="reviewer-dashboard">
       <header className="dashboard-header">
         <div>
-          <h1>🔍 Reviewer Dashboard</h1>
+          <h1>Reviewer Dashboard</h1>
+          <p>Manage your manuscript review assignments</p>
         </div>
-        <div className="header-actions">
-          <span className="user-info">👤 {user?.name || user?.email}</span>
-          <button onClick={fetchDashboardData} className="refresh-btn">🔄 Refresh</button>
+        <div className="user-info">
+          <span>👤 {user?.name || user?.email}</span>
           <button onClick={handleLogout} className="btn-logout">Logout</button>
         </div>
       </header>
 
-      <div className="dashboard-layout">
-        <aside className="sidebar">
-          <nav className="sidebar-nav">
-            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>
-              <span className="icon">📊</span> Overview
-            </button>
-            <button className={activeTab === 'upload' ? 'active' : ''} onClick={() => setActiveTab('upload')}>
-              <span className="icon">📤</span> Upload Manuscript
-            </button>
-            <button className={activeTab === 'assignments' ? 'active' : ''} onClick={() => setActiveTab('assignments')}>
-              <span className="icon">📋</span> My Assignments
-            </button>
-            <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}>
-              <span className="icon">📈</span> Analytics
-            </button>
-          </nav>
-        </aside>
+      <nav className="dashboard-tabs">
+        <button
+          className={activeTab === 'overview' ? 'active' : ''}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button
+          className={activeTab === 'upload' ? 'active' : ''}
+          onClick={() => setActiveTab('upload')}
+        >
+          📤 Upload
+        </button>
+        <button
+          className={activeTab === 'assignments' ? 'active' : ''}
+          onClick={() => setActiveTab('assignments')}
+        >
+          My Assignments
+        </button>
+        <button
+          className={activeTab === 'analytics' ? 'active' : ''}
+          onClick={() => setActiveTab('analytics')}
+        >
+          Analytics
+        </button>
+      </nav>
 
-        <main className="dashboard-content">
+      <div className="dashboard-content">
         {activeTab === 'upload' && (
           <div className="upload-tab">
-            <div className="upload-card">
-              <div className="upload-header">
-                <h3>📄 Upload Academic Manuscript</h3>
-                <p>Submit your PDF or DOCX file for comprehensive AI-powered review</p>
-              </div>
-
-              <div
-                className={`file-drop-zone ${dragOver ? 'dragover' : ''}`}
-                onDrop={handleDrop}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
-                onClick={() => document.getElementById('file-input-reviewer').click()}
-              >
-                <div className="drop-content">
-                  <div className="drop-icon">📁</div>
-                  <p className="drop-title">Drop your file here or click to browse</p>
-                  <p className="drop-subtitle">Supported formats: PDF, DOCX • Maximum size: 50MB</p>
-                </div>
-              </div>
-
-              <input
-                id="file-input-reviewer"
-                type="file"
-                onChange={(e) => handleFileChange(e.target.files[0])}
-                accept=".pdf,.docx"
-                style={{ display: 'none' }}
-              />
-
-              {file && (
-                <div className="selected-file">
-                  <span>📎 {file.name}</span>
-                  <span className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                </div>
-              )}
-
-              {uploadError && <div className="error-message">❌ {uploadError}</div>}
-
-              <button
-                className="btn-upload"
-                onClick={handleUpload}
-                disabled={uploading || !file}
-              >
-                {uploading ? (
-                  <>
-                    <div className="spinner-small"></div>
-                    Uploading...
-                  </>
-                ) : (
-                  '🚀 Start Review'
-                )}
-              </button>
-
-              <div className="upload-info">
-                <h4>What happens next?</h4>
-                <ul>
-                  <li>🔬 Methodology analysis by AI agents</li>
-                  <li>📚 Literature review and citation check</li>
-                  <li>✍️ Clarity and writing quality assessment</li>
-                  <li>⚖️ Ethics and compliance evaluation</li>
-                  <li>📊 Comprehensive final report generation</li>
-                </ul>
-                <p className="info-note">Average processing time: 2-5 minutes</p>
-              </div>
-            </div>
+            <UploadForm onUploadSuccess={(id) => { alert(`Manuscript uploaded successfully! Submission ID: ${id}`); fetchDashboardData(); }} />
           </div>
         )}
 
@@ -337,7 +232,8 @@ const ReviewerDashboard = () => {
                             className="btn-download"
                             onClick={() => {
                               const baseName = assignment.submission_title.replace(/\.[^/.]+$/, '');
-                              downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed.pdf`);
+                              const ext = assignment.submission_title.match(/\.[^/.]+$/)?.[0] || '.pdf';
+                              downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed${ext}`);
                             }}
                             title="Download review"
                           >
@@ -433,7 +329,8 @@ const ReviewerDashboard = () => {
                           className="btn-download"
                           onClick={() => {
                             const baseName = assignment.submission_title.replace(/\.[^/.]+$/, '');
-                            downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed.pdf`);
+                            const ext = assignment.submission_title.match(/\.[^/.]+$/)?.[0] || '.pdf';
+                            downloadFile(`/api/v1/downloads/reviews/${assignment.submission_id}`, `${baseName}_Reviewed${ext}`);
                           }}
                           title="Download review"
                         >
@@ -629,7 +526,6 @@ const ReviewerDashboard = () => {
             </div>
           </div>
         )}
-        </main>
       </div>
     </div>
   );
