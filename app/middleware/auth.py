@@ -82,10 +82,10 @@ class AuthService:
             return False
         result = await self.collection.update_one({"key": api_key}, {"$set": {"active": False}})
         if result.modified_count > 0:
-            logger.info(f"API key associated with key starting with {api_key[:8]} revoked.")
+            logger.info("API key revoked.")  # Do not log any part of the API key.
             return True
         logger.warning(
-            f"Attempted to revoke non-existent or already inactive API key starting with {api_key[:8]}."
+            "Attempted to revoke non-existent or already inactive API key."
         )
         return False
 
