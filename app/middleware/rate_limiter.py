@@ -1,8 +1,11 @@
+import logging
 import time
 from collections import defaultdict, deque
 from typing import Dict
 
 from fastapi import HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
@@ -12,15 +15,18 @@ class RateLimiter:
         # Track processing submissions per IP: {ip: set of submission_ids}
         self.processing: Dict[str, set] = defaultdict(set)
 
-    def check_upload_limit(self, client_ip: str, is_cached: bool = False) -> None:
+    def check_upload_limit(
+        self, client_ip: str, submission_id: str, is_cached: bool = False
+    ) -> None:
         """Tiered rate limiting: 5 per hour, 15 per day (relaxed for cached)"""
         now = time.time()
         hour_ago = now - 3600
         day_ago = now - 86400
 
         # Clean old requests
-        while self.requests[client_ip] and self.requests[client_ip][0] < day_ago:
-            self.requests[client_ip].popleft()
+        client_requests = self.requests[client_ip]
+        while client_requests and client_requests[0] < day_ago:
+            client_requests.popleft()
 
         # Count recent requests
         hour_count = sum(1 for t in self.requests[client_ip] if t >= hour_ago)
@@ -51,10 +57,11 @@ class RateLimiter:
                 )
 
         self.requests[client_ip].append(now)
-
-    def check_concurrent_processing(self, client_ip: str, submission_id: str) -> None:
-        """Allow max 2 concurrent processing per IP"""
         if len(self.processing[client_ip]) >= 2:
+            logger.warning(
+                "Too many concurrent reviews for IP %s. Please wait for current reviews to complete.",
+                client_ip,
+            )
             raise HTTPException(
                 status_code=429,
                 detail="Too many concurrent reviews. Please wait for current reviews to complete.",
@@ -71,7 +78,8 @@ rate_limiter = RateLimiter()
 
 async def rate_limit_middleware(request: Request, call_next):
     """Apply rate limiting based on endpoint"""
-    request.client.host
+    _ = request.client.host if request.client else "127.0.0.1"
+    # Client IP is used to track and enforce rate limits per user
     path = request.url.path
 
     # Skip rate limiting for static files and health checks

@@ -1,7 +1,9 @@
 """Admin routes for user management"""
 
+from enum import Enum
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.middleware.permissions import require_permission
 from app.models.roles import Permission
@@ -11,21 +13,29 @@ from app.services.user_service import user_service
 from app.utils.common_operations import create_user_common, get_paginated_users
 from app.utils.request_utils import get_client_ip
 
-router = APIRouter(prefix="/admin/users", tags=["admin-users"])
-
+router = APIRouter()
 NOT_FOUND_MSG = "User not found"
+
+
+class RoleEnum(str, Enum):
+    """Enumeration for user roles."""
+
+    ADMIN = "admin"
+    EDITOR = "editor"
+    REVIEWER = "reviewer"
+    AUTHOR = "author"
 
 
 class CreateUserRequest(BaseModel):
     email: EmailStr
-    password: str
-    name: str
-    role: str = "author"
+    password: str = Field(..., min_length=8, description="User password")
+    name: str = Field(..., min_length=2, max_length=50, description="User's full name")
+    role: RoleEnum = RoleEnum.AUTHOR
 
 
 class UpdateUserRoleRequest(BaseModel):
     email: EmailStr
-    role: str
+    role: RoleEnum
 
 
 class ResetPasswordRequest(BaseModel):
@@ -50,14 +60,32 @@ async def create_user_admin(
     admin: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
     """Create user (admin only)"""
-    user = await create_user_common(
-        email=request.email,
-        password=request.password,
-        name=request.name,
-        role=request.role,
-        admin_user=admin,
-        request_obj=req,
-        verify_email=True,
+    try:
+        user = await create_user_common(
+            email=request.email,
+            password=request.password,
+            name=request.name,
+            role=request.role,
+            admin_user=admin,
+            request_obj=req,
+            verify_email=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail="An unexpected error occurred during user creation."
+        ) from e
+
+    await audit_logger.log_event(
+        event_type="admin_user_created",
+        user_id=str(admin["_id"]),
+        user_email=admin.get("email"),
+        ip_address=get_client_ip(req),
+        details={
+            "created_user_email": user["email"],
+            "created_user_role": user["role"],
+        },
     )
 
     return {
@@ -77,9 +105,13 @@ async def update_user_role(
     db = await mongodb_service.get_database()
     users = db["users"]
 
-    result = await users.update_one({"email": request.email}, {"$set": {"role": request.role}})
+    updated_user = await users.find_one_and_update(
+        {"email": request.email},
+        {"$set": {"role": request.role}},
+        return_document=True,
+    )
 
-    if result.matched_count == 0:
+    if not updated_user:
         raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
 
     await audit_logger.log_event(
@@ -93,12 +125,13 @@ async def update_user_role(
         },
     )
 
-    return {"message": "Role updated"}
+    updated_user["_id"] = str(updated_user["_id"])
+    return updated_user
 
 
 @router.delete("/{email}")
 async def delete_user(
-    email: str,
+    email: EmailStr,
     req: Request,
     admin: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
@@ -108,21 +141,25 @@ async def delete_user(
     if not deleted:
         raise HTTPException(status_code=404, detail=NOT_FOUND_MSG)
 
-    await audit_logger.log_event(
-        event_type="admin_user_deleted",
-        user_id=str(admin["_id"]),
-        user_email=admin.get("email"),
-        ip_address=get_client_ip(req),
-        details={"deleted_user": email},
-        severity="warning",
-    )
+    try:
+        await audit_logger.log_event(
+            event_type="admin_user_deleted",
+            user_id=str(admin["_id"]),
+            user_email=admin.get("email"),
+            ip_address=get_client_ip(req),
+            details={"deleted_user": email},
+            severity="warning",
+        )
+    except Exception as e:
+        # Log the audit failure but don't fail the request
+        audit_logger.log_error(f"Failed to log admin_user_deleted event: {e}")
 
     return {"message": "User deleted"}
 
 
 @router.post("/{email}/deactivate")
 async def deactivate_user(
-    email: str,
+    email: EmailStr,
     req: Request,
     admin: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
@@ -149,7 +186,7 @@ async def deactivate_user(
 
 @router.post("/{email}/activate")
 async def activate_user(
-    email: str,
+    email: EmailStr,
     req: Request,
     admin: dict = Depends(require_permission(Permission.MANAGE_USERS)),
 ):
@@ -206,3 +243,5 @@ async def reset_user_password(
         return {"message": "Password reset successfully"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.") from e

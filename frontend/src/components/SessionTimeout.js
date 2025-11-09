@@ -9,12 +9,12 @@ const SessionTimeout = ({ timeout = 30 * 60 * 1000, warningTime = 5 * 60 * 1000 
     if (!authService.isAuthenticated()) return;
 
     let warningTimer, logoutTimer, countdownInterval;
-    
+
     const resetTimers = () => {
       clearTimeout(warningTimer);
       clearTimeout(logoutTimer);
       clearInterval(countdownInterval);
-      
+
       warningTimer = setTimeout(() => {
         setShowWarning(true);
         setTimeLeft(warningTime);
@@ -28,7 +28,7 @@ const SessionTimeout = ({ timeout = 30 * 60 * 1000, warningTime = 5 * 60 * 1000 
           });
         }, 1000);
       }, timeout - warningTime);
-      
+
       logoutTimer = setTimeout(() => {
         authService.logout();
         window.location.href = '/login';

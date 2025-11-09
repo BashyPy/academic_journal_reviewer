@@ -1,18 +1,18 @@
 %%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#ffffff','primaryTextColor':'#000','primaryBorderColor':'#333','lineColor':'#333','secondaryColor':'#d4edda','tertiaryColor':'#f8d7da','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff'}}}%%
 graph TD
     A[Download Request] --> B{User Role}
-    
+
     B -->|Author| C{Check Ownership}
     B -->|Reviewer| D{Check Assignment}
     B -->|Editor| E[Grant Access]
     B -->|Admin| E
     B -->|Super Admin| E
-    
+
     C -->|user_id matches| E
     C -->|user_id mismatch| F[Deny Access]
-    
+
     D -->|reviewer_id matches| E
     D -->|reviewer_id mismatch| F
-    
+
     E --> G[Allow Download]
     F --> H[403 Forbidden]

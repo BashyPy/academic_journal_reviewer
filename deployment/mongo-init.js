@@ -47,6 +47,9 @@ db.createCollection('passkeys');
 db.createCollection('totp_secrets');
 db.createCollection('otp_codes');
 db.createCollection('reviews');
+db.createCollection('document_embeddings');
+db.createCollection('workflow_checkpoints');
+db.createCollection('embedding_cache');
 
 // Create indexes for performance
 db.users.createIndex({ email: 1 }, { unique: true });
@@ -83,6 +86,24 @@ db.reviews.createIndex({ submission_id: 1 });
 db.reviews.createIndex({ reviewer_id: 1 });
 db.reviews.createIndex({ status: 1 });
 db.reviews.createIndex({ created_at: -1 });
+
+db.document_embeddings.createIndex({ submission_id: 1 });
+db.document_embeddings.createIndex({ created_at: -1 });
+db.document_embeddings.createIndex({ user_id: 1 });
+
+db.workflow_checkpoints.createIndex({ submission_id: 1 }, { unique: true });
+db.workflow_checkpoints.createIndex({ created_at: -1 });
+
+db.embedding_cache.createIndex({ content_hash: 1 }, { unique: true });
+db.embedding_cache.createIndex({ created_at: 1 }, { expireAfterSeconds: 2592000 }); // 30 days TTL
+
+// Create vector search index for RAG (Atlas only)
+// Note: Vector search indexes must be created via Atlas UI or API
+// This is a placeholder for documentation
+// Index name: vector_index
+// Field: embedding
+// Dimensions: 1536 (OpenAI ada-002)
+// Similarity: cosine
 
 // Create TTL indexes for automatic cleanup
 db.otp_codes.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });

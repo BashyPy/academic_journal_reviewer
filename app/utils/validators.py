@@ -6,6 +6,8 @@ from typing import Tuple
 
 def validate_password(password: str) -> Tuple[bool, str]:
     """Validate password strength"""
+    if not password:
+        return False, "Password cannot be empty"
     if len(password) < 8:
         return False, "Password must be at least 8 characters"
     if len(password) > 128:

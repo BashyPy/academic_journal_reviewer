@@ -30,18 +30,22 @@ class IssueDeduplicator:
 
     def _get_severity(self, obj) -> str:
         # Extract a raw severity value from dicts, objects, or strings, then normalize aliases.
-        if isinstance(obj, dict):
-            raw = obj.get("severity", "moderate")
-        elif hasattr(obj, "severity"):
-            raw = getattr(obj, "severity")
-        elif isinstance(obj, str):
-            raw = obj
-        else:
-            raw = "moderate"
+        try:
+            if isinstance(obj, dict):
+                raw = obj.get("severity", "moderate")
+            elif hasattr(obj, "severity"):
+                raw = getattr(obj, "severity")
+            elif isinstance(obj, str):
+                raw = obj
+            else:
+                raw = "moderate"
 
-        raw_str = str(raw).lower()
-        # map common aliases (e.g., high/medium/low) to canonical severities
-        return self.SEVERITY_ALIASES.get(raw_str, raw_str)
+            raw_str = str(raw).lower()
+            # map common aliases (e.g., high/medium/low) to canonical severities
+            severity = self.SEVERITY_ALIASES.get(raw_str, raw_str)
+            return severity if severity in self.SEVERITIES else "moderate"
+        except Exception:
+            return "moderate"
 
     def _merge_if_higher(self, existing, incoming) -> None:
         severity_order = {"major": 3, "moderate": 2, "minor": 1}
@@ -74,21 +78,15 @@ class IssueDeduplicator:
 
     def deduplicate_issues(self, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Remove duplicate issues based on description similarity."""
-        unique_issues = []
+        unique_issues: List[Dict[str, Any]] = []
         for issue in issues:
-            description = issue.get("description", "")
+            description = self._get_field(issue, "description", str(issue))
             is_duplicate = False
 
-            for existing in list(unique_issues):
-                existing_desc = existing.get("description", "")
+            for existing in unique_issues:
+                existing_desc = self._get_field(existing, "description", str(existing))
                 if self._is_similar(description, existing_desc):
-                    # Keep the one with higher severity
-                    severity_order = {"high": 3, "medium": 2, "low": 1}
-                    if severity_order.get(issue.get("severity", "low"), 1) > severity_order.get(
-                        existing.get("severity", "low"), 1
-                    ):
-                        unique_issues.remove(existing)
-                        unique_issues.append(issue)
+                    self._merge_if_higher(existing, issue)
                     is_duplicate = True
                     break
 
@@ -105,7 +103,10 @@ class IssueDeduplicator:
 
         for finding in all_findings:
             raw_finding = self._get_field(finding, "finding", str(finding))
-            finding_text = raw_finding.lower()
+            try:
+                finding_text = str(raw_finding).lower()
+            except Exception:
+                finding_text = ""  # Fallback to empty string on conversion error
             matched = False
 
             # iterate with index to reuse the cached normalized texts

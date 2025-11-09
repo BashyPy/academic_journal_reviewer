@@ -6,57 +6,57 @@ graph LR
         C[Content Area]
         D[Action Buttons]
     end
-    
+
     subgraph Overview["Overview Tab"]
         E1[Stats Grid]
         E2[Security Stats]
     end
-    
+
     subgraph Users["Users Tab"]
         F1[User Table]
         F2[Create User Form]
         F3[Role Selector]
         F4[Status Toggle]
     end
-    
+
     subgraph Submissions["Submissions Tab"]
         G1[Submission Table]
         G2[Status Filter]
         G3[Action Buttons]
     end
-    
+
     subgraph Audit["Audit Logs Tab"]
         H1[Logs Table]
         H2[Filters]
         H3[Pagination]
     end
-    
+
     subgraph Analytics["Analytics Tab"]
         I1[Submission Chart]
         I2[Domain Distribution]
         I3[Trends]
     end
-    
+
     subgraph APIKeys["API Keys Tab"]
         J1[Keys Table]
         J2[Revoke Actions]
     end
-    
+
     subgraph Performance["Performance Tab"]
         K1[Metrics Cards]
         K2[Processing Times]
     end
-    
+
     subgraph Activity["Activity Tab"]
         L1[User Activity Table]
         L2[Event Counts]
     end
-    
+
     subgraph System["System Tab"]
         M1[Cache Controls]
         M2[Health Status]
     end
-    
+
     A --> B
     B --> C
     C --> E1
@@ -68,7 +68,7 @@ graph LR
     C --> K1
     C --> L1
     C --> M1
-    
+
     style A fill:#3498db,stroke:#333,stroke-width:2px
     style B fill:#2ecc71,stroke:#333,stroke-width:2px
     style C fill:#e74c3c,stroke:#333,stroke-width:2px

@@ -4,20 +4,20 @@ stateDiagram-v2
     Submitted --> Processing
     Processing --> Completed
     Processing --> Failed
-    
+
     Completed --> UnderReview: Editor Views
     UnderReview --> DecisionMade: Accept/Revise/Reject
-    
+
     Failed --> Reprocessing: Editor Reprocesses
     Reprocessing --> Processing
-    
+
     DecisionMade --> [*]
-    
+
     note right of UnderReview
         Editor reviews AI-generated
         report and makes decision
     end note
-    
+
     note right of DecisionMade
         Decision logged with
         comments and timestamp

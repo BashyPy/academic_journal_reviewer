@@ -19,10 +19,10 @@ class WAF:
         r"(\bselect\b.*\bfrom\b)",
         r"(\binsert\b.*\binto\b)",
         r"(\bdelete\b.*\bfrom\b)",
-        r"(\bdrop\b.*\btable\b)",
+        r"(\bdrop\b.*?\btable\b)",
         r"(--|\#|\/\*)",
-        r"(\bor\b.*=.*)",
-        r"(\band\b.*=.*)",
+        r"(\bor\b.*?=.*?)",
+        r"(\band\b.*?=.*?)",
     ]
 
     XSS_PATTERNS = [
@@ -37,8 +37,10 @@ class WAF:
 
     PATH_TRAVERSAL_PATTERNS = [
         r"\.\./",
-        r"\.\.",
-        r"%2e%2e",
+        r"/\.\.(?![a-zA-Z0-9])",  # /.. not followed by alphanum
+        r"\\.\.(?![a-zA-Z0-9])",  # \.. not followed by alphanum
+        r"%2e%2e/",
+        r"/%2e%2e(?![a-zA-Z0-9])",
         r"\.\.\\",
     ]
 
@@ -49,11 +51,10 @@ class WAF:
         r"\$\(.*\)",
     ]
 
-    def __init__(self):
-        self.sql_regex = [re.compile(p, re.IGNORECASE) for p in self.SQL_INJECTION_PATTERNS]
-        self.xss_regex = [re.compile(p, re.IGNORECASE) for p in self.XSS_PATTERNS]
-        self.path_regex = [re.compile(p, re.IGNORECASE) for p in self.PATH_TRAVERSAL_PATTERNS]
-        self.cmd_regex = [re.compile(p, re.IGNORECASE) for p in self.COMMAND_INJECTION_PATTERNS]
+    sql_regex = [re.compile(p, re.IGNORECASE) for p in SQL_INJECTION_PATTERNS]
+    xss_regex = [re.compile(p, re.IGNORECASE) for p in XSS_PATTERNS]
+    path_regex = [re.compile(p, re.IGNORECASE) for p in PATH_TRAVERSAL_PATTERNS]
+    cmd_regex = [re.compile(p, re.IGNORECASE) for p in COMMAND_INJECTION_PATTERNS]
 
     def check_patterns(self, text: str, patterns: List[re.Pattern]) -> bool:
         """Check if text matches any pattern"""
@@ -92,12 +93,17 @@ class WAF:
     def _check_body(self, body: str) -> tuple[bool, str]:
         if not body:
             return True, "OK"
-        if self.check_patterns(body, self.sql_regex):
-            return False, "SQL injection detected in body"
-        if self.check_patterns(body, self.xss_regex):
-            return False, "XSS attempt detected in body"
-        if self.check_patterns(body, self.cmd_regex):
-            return False, "Command injection detected in body"
+
+        checks = [
+            (self.sql_regex, "SQL injection detected in body"),
+            (self.xss_regex, "XSS attempt detected in body"),
+            (self.cmd_regex, "Command injection detected in body"),
+        ]
+
+        for patterns, message in checks:
+            if self.check_patterns(body, patterns):
+                return False, message
+
         return True, "OK"
 
     def scan_request(self, request: Request, body: str = "") -> tuple[bool, str]:
@@ -125,12 +131,22 @@ async def waf_middleware(request: Request, call_next):
     """WAF middleware"""
     # Read body if present
     body = ""
+    body_bytes = b""
     if request.method in ["POST", "PUT", "PATCH"]:
         try:
             body_bytes = await request.body()
             body = body_bytes.decode("utf-8")
-        except Exception:
-            pass
+
+            # After reading the body, the stream is consumed.
+            # We need to replace the request's receive channel with one that returns the cached body.
+            def receive():
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+            request = Request(request.scope, receive=receive)
+
+        except (ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to decode request body: {e}")
+            body = ""
 
     # Scan request
     is_safe, message = waf.scan_request(request, body)

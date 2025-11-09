@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -30,36 +31,118 @@ USER_NOT_FOUND = "User not found"
 MONGO_SORT = "$sort"
 MONGO_GROUP = "$group"
 MONGO_MATCH = "$match"
+MONGO_COUNT = "$count"
+MONGO_IF_NULL = "$ifNull"
+MONGO_ARRAY_ELEM_AT = "$arrayElemAt"
+MONGO_PROJECT = "$project"
+MONGO_FACET = "$facet"
+MONGO_SUM = "$sum"
+MONGO_NE = "$ne"
+MONGO_LIMIT = "$limit"
 
 
 def require_admin(user: dict = Depends(get_current_user)):
     """Require admin or super_admin role"""
     role = user.get("role")
     if role not in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]:
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to access this resource.",
+        )
     return user
 
 
 @router.get("/stats")
-async def get_admin_stats(_admin: dict = Depends(require_admin)):
-    """Get admin dashboard statistics"""
+async def get_dashboard_stats(_admin: dict = Depends(require_admin)):
+    """Get dashboard statistics"""
     db = await mongodb_service.get_database()
 
-    # Admins can see user and submission stats but not full system access
-    stats = {
-        "total_users": await db.users.count_documents({}),
-        "active_users": await db.users.count_documents({"is_active": True}),
-        "total_submissions": await db.submissions.count_documents({}),
-        "pending_submissions": await db.submissions.count_documents({"status": "pending"}),
-        "processing_submissions": await db.submissions.count_documents({"status": "processing"}),
-        "completed_submissions": await db.submissions.count_documents({"status": "completed"}),
-        "failed_submissions": await db.submissions.count_documents({"status": "failed"}),
-        "recent_activity_count": await db.audit_logs.count_documents(
-            {"timestamp": {"$gte": datetime.now() - timedelta(hours=24)}}
-        ),
-    }
+    user_stats_pipeline = [
+        {
+            MONGO_FACET: {
+                "total_users": [{MONGO_COUNT: "count"}],
+                "active_users": [{MONGO_MATCH: {"is_active": True}}, {MONGO_COUNT: "count"}],
+            }
+        },
+        {
+            MONGO_PROJECT: {
+                "total_users": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$total_users.count", 0]}, 0]
+                },
+                "active_users": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$active_users.count", 0]}, 0]
+                },
+            }
+        },
+    ]
+    submission_stats_pipeline = [
+        {
+            MONGO_FACET: {
+                "total_submissions": [{MONGO_COUNT: "count"}],
+                "pending_submissions": [
+                    {MONGO_MATCH: {"status": "pending"}},
+                    {MONGO_COUNT: "count"},
+                ],
+                "processing_submissions": [
+                    {MONGO_MATCH: {"status": "processing"}},
+                    {MONGO_COUNT: "count"},
+                ],
+                "completed_submissions": [
+                    {MONGO_MATCH: {"status": "completed"}},
+                    {MONGO_COUNT: "count"},
+                ],
+                "failed_submissions": [{MONGO_MATCH: {"status": "failed"}}, {MONGO_COUNT: "count"}],
+            }
+        },
+        {
+            MONGO_PROJECT: {
+                "total_submissions": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$total_submissions.count", 0]}, 0]
+                },
+                "pending_submissions": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$pending_submissions.count", 0]}, 0]
+                },
+                "processing_submissions": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$processing_submissions.count", 0]}, 0]
+                },
+                "completed_submissions": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$completed_submissions.count", 0]}, 0]
+                },
+                "failed_submissions": {
+                    MONGO_IF_NULL: [{MONGO_ARRAY_ELEM_AT: ["$failed_submissions.count", 0]}, 0]
+                },
+            }
+        },
+    ]
 
-    return stats
+    user_stats_result = await db.users.aggregate(user_stats_pipeline).to_list(length=1)
+    submission_stats_result = await db.submissions.aggregate(submission_stats_pipeline).to_list(
+        length=1
+    )
+    recent_activity_count = await db.audit_logs.count_documents(
+        {"timestamp": {"$gte": datetime.now() - timedelta(hours=24)}}
+    )
+
+    user_stats = (
+        user_stats_result[0] if user_stats_result else {"total_users": 0, "active_users": 0}
+    )
+    submission_stats = (
+        submission_stats_result[0]
+        if submission_stats_result
+        else {
+            "total_submissions": 0,
+            "pending_submissions": 0,
+            "processing_submissions": 0,
+            "completed_submissions": 0,
+            "failed_submissions": 0,
+        }
+    )
+
+    _ = {
+        **user_stats,
+        **submission_stats,
+        "recent_activity_count": recent_activity_count,
+    }
 
 
 @router.get("/users")
@@ -70,10 +153,10 @@ async def list_users(
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
 ):
-    """List users (admins can view but not modify super_admins)"""
+    """List users"""
     db = await mongodb_service.get_database()
-
     query = {}
+
     if role:
         query["role"] = role
     if is_active is not None:
@@ -81,7 +164,7 @@ async def list_users(
 
     # Admins cannot see super_admin users
     if admin.get("role") == UserRole.ADMIN.value:
-        query["role"] = {"$ne": UserRole.SUPER_ADMIN.value}
+        query["role"] = {MONGO_NE: UserRole.SUPER_ADMIN.value}
 
     users = await db.users.find(query).skip(skip).limit(limit).to_list(length=limit)
     total = await db.users.count_documents(query)
@@ -98,7 +181,10 @@ async def get_user_details(user_id: str, admin: dict = Depends(require_admin)):
     """Get detailed user information"""
 
     db = await mongodb_service.get_database()
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid user ID format") from None
 
     if not user:
         raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
@@ -126,7 +212,11 @@ async def update_user_status(
 ):
     """Activate or deactivate user (cannot modify super_admins)"""
     db = await mongodb_service.get_database()
-    target_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    try:
+        target_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid user ID format") from None
+
     if not target_user:
         raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
     if target_user.get("role") == UserRole.SUPER_ADMIN.value:
@@ -153,7 +243,7 @@ async def get_submission_details(submission_id: str, _admin: dict = Depends(requ
 
 
 @router.get("/audit-logs")
-async def get_audit_logs(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def get_audit_logs(  # pylint: disable=too-many-arguments
     _admin: dict = Depends(require_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -166,12 +256,9 @@ async def get_audit_logs(  # pylint: disable=too-many-arguments,too-many-positio
 
 
 @router.get("/analytics/submissions")
-async def get_submission_analytics_route(
-    _admin: dict = Depends(require_admin),
-    days: int = Query(30, ge=1, le=90),
-):
+async def get_submission_analytics_route(_admin: dict = Depends(require_admin)):
     """Get submission analytics"""
-    return await get_submission_analytics(days)
+    return await get_submission_analytics()
 
 
 @router.get("/analytics/domains")
@@ -180,14 +267,13 @@ async def get_domain_analytics(_admin: dict = Depends(require_admin)):
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {MONGO_GROUP: {"_id": "$detected_domain", "count": {"$sum": 1}}},
+        {MONGO_GROUP: {"_id": "$detected_domain", "count": {MONGO_SUM: 1}}},
         {MONGO_SORT: {"count": -1}},
-        {"$limit": 20},
+        {MONGO_LIMIT: 20},
     ]
 
     results = await db.submissions.aggregate(pipeline).to_list(length=20)
-
-    return {"domain_distribution": results}
+    return results
 
 
 @router.get("/api-keys")
@@ -232,7 +318,7 @@ async def create_api_key(
     if request.role not in valid_roles:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    result = await auth_service.create_api_key(
+    new_key_data = await auth_service.create_api_key(
         name=request.name,
         role=request.role,
         expires_days=request.expires_days,
@@ -240,14 +326,12 @@ async def create_api_key(
 
     await audit_logger.log_event(
         event_type="api_key_created",
-        user_id=str(admin["_id"]),
+        details=f"API key '{request.name}' created for role '{request.role}'.",
         user_email=admin.get("email"),
         ip_address=get_client_ip(req),
-        details={"key_name": request.name, "role": request.role},
-        severity="info",
     )
 
-    return result
+    return new_key_data
 
 
 @router.get("/recent-activity")
@@ -257,28 +341,27 @@ async def get_recent_activity(
 ):
     """Get recent system activity"""
     db = await mongodb_service.get_database()
-
-    logs = await db.audit_logs.find().sort("timestamp", -1).limit(limit).to_list(length=limit)
-
-    for log in logs:
+    recent_logs = (
+        await db.audit_logs.find().sort("timestamp", -1).limit(limit).to_list(length=limit)
+    )
+    for log in recent_logs:
         log["_id"] = str(log["_id"])
+    return {"recent_activity": recent_logs}
 
-    return {"recent_activity": logs}
 
-
-@router.get("/user-statistics")
+@router.get("/analytics/users")
 async def get_user_statistics(admin: dict = Depends(require_admin)):
     """Get user statistics by role"""
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {MONGO_GROUP: {"_id": "$role", "count": {"$sum": 1}}},
+        {MONGO_GROUP: {"_id": "$role", "count": {MONGO_SUM: 1}}},
         {MONGO_SORT: {"count": -1}},
     ]
 
     # Exclude super_admin from stats for regular admins
     if admin.get("role") == UserRole.ADMIN.value:
-        match_filter = {MONGO_MATCH: {"role": {"$ne": UserRole.SUPER_ADMIN.value}}}
+        match_filter = {MONGO_MATCH: {"role": {MONGO_NE: UserRole.SUPER_ADMIN.value}}}
         pipeline.insert(0, match_filter)
 
     results = await db.users.aggregate(pipeline).to_list(length=10)

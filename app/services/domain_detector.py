@@ -269,9 +269,13 @@ class DomainDetector:
         self._keyword_wordsets: Dict[str, Set[str]] = {}
         self._keyword_phrases: Dict[str, Set[Tuple[str, ...]]] = {}
         self._max_phrase_len: int = 1
+        self._domain_keyword_counts: Dict[str, int] = {}
         self._build_keyword_lookups()
 
     def _build_keyword_lookups(self) -> None:
+        self._domain_keyword_counts = {
+            domain: len(keywords) for domain, keywords in self.domain_keywords.items()
+        }
         for domain, keywords in self.domain_keywords.items():
             wordset: Set[str] = set()
             phrases: Set[Tuple[str, ...]] = set()
@@ -296,12 +300,12 @@ class DomainDetector:
 
         domain_scores: Dict[str, float] = {
             domain: self._score_domain(domain, word_set, ngram_sets)
-            for domain in self.domain_keywords.keys()
+            for domain in self.domain_keywords
         }
 
         if domain_scores:
-            primary_domain = max(domain_scores, key=domain_scores.get)
-            denom = max(1, len(self.domain_keywords.get(primary_domain, [])))
+            primary_domain = max(domain_scores, key=lambda k: domain_scores[k])
+            denom = max(1, self._domain_keyword_counts.get(primary_domain, 0))
             confidence = domain_scores.get(primary_domain, 0.0) / denom
         else:
             primary_domain = "general"
@@ -485,11 +489,10 @@ class DomainDetector:
                 "clarity": 0.1,
             },
         }
-
-        return domain_weights.get(
-            domain,
-            {"methodology": 0.3, "literature": 0.25, "clarity": 0.25, "ethics": 0.2},
-        )
+        try:
+            return domain_weights[domain]
+        except KeyError:
+            return {"methodology": 0.3, "literature": 0.25, "clarity": 0.25, "ethics": 0.2}
 
     def get_domain_specific_criteria(self, domain: str) -> Dict[str, List[str]]:
         criteria = {

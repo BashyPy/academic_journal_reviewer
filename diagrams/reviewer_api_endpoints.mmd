@@ -5,18 +5,18 @@ graph TD
     A --> D[Assignment Details]
     A --> E[Review Actions]
     A --> F[Analytics]
-    
+
     B --> B1[GET /reviewer/dashboard/stats]
-    
+
     C --> C1[GET /reviewer/assignments]
     C --> C2[GET /reviewer/assignments/:id]
-    
+
     E --> E1[POST /assignments/:id/start]
     E --> E2[POST /assignments/:id/submit]
     E --> E3[PUT /assignments/:id/review]
-    
+
     F --> F1[GET /analytics/timeline]
     F --> F2[GET /analytics/domains]
     F --> F3[GET /analytics/performance]
-    
+
     style A fill:#3498db,stroke:#2980b9,color:#000,stroke-width:2px

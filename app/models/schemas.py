@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TaskStatus(str, Enum):
@@ -42,6 +42,18 @@ class TextHighlight(BaseModel):
     end: int
     context: Optional[str] = None
 
+    @field_validator("start")
+    def start_must_be_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("start must be a non-negative integer")
+        return v
+
+    @field_validator("end")
+    def end_must_be_greater_than_start(cls, v: int, values: Dict[str, Any]) -> int:
+        if "start" in values and v < values["start"]:
+            raise ValueError("end must be greater than or equal to start")
+        return v
+
 
 class DetailedFinding(BaseModel):
     issue: str
@@ -52,9 +64,15 @@ class DetailedFinding(BaseModel):
 
 
 class AgentCritique(BaseModel):
-    agent_type: str
+    agent_type: AgentType
     score: float
     summary: str
     findings: list[DetailedFinding]
     strengths: list[str]
     weaknesses: list[str]
+
+    @field_validator("score")
+    def score_must_be_in_range(cls, v: float) -> float:
+        if not 0.0 <= v <= 10.0:
+            raise ValueError("score must be between 0.0 and 10.0")
+        return v

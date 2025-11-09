@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 def _can_access_submission(user: dict, submission: dict) -> bool:
     """Check if user can access this submission"""
     user_role = user.get("role", "author")
-    user_id = str(user["_id"])
+    user_id = str(user.get("_id"))
 
     # Super admin and admin can access all
     if user_role in ["super_admin", "admin"]:
@@ -32,8 +32,8 @@ def _can_access_submission(user: dict, submission: dict) -> bool:
     # Reviewer can access assigned submissions
     if user_role == "reviewer":
         # Check if reviewer is assigned to this submission
-        # For now, allow reviewers to view all (can be restricted later)
-        return True
+        assigned_reviewers = submission.get("assigned_reviewers", [])
+        return user_id in assigned_reviewers
 
     # Author can only access their own
     return submission.get("user_id") == user_id
@@ -87,6 +87,17 @@ async def download_original_manuscript(submission_id: str, user: dict = Depends(
 
     except HTTPException:
         raise
+    except KeyError as e:
+        logger.error(
+            f"Missing key in submission data: {e}",
+            additional_info={
+                "submission_id": submission_id,
+                "user_id": str(user["_id"]),
+            },
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: Missing data '{e}'"
+        ) from e
     except Exception as e:
         logger.error(
             e,

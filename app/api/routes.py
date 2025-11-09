@@ -2,9 +2,9 @@ import asyncio
 import io
 import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
@@ -45,7 +45,8 @@ def _content_matches_extension(data: bytes, extension: str) -> bool:
                 return True
             # Search only within the first 1KB without slicing the byte string
             return data.find(b"%PDF", 0, min(1024, len(data))) != -1
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error during PDF content check: {e}")
             return False
     if extension == DOCX_EXTENSION:
         try:
@@ -65,17 +66,16 @@ def _content_matches_extension(data: bytes, extension: str) -> bool:
 def _sanitize_and_validate_filename(raw_filename: str):
     if not raw_filename:
         raise HTTPException(status_code=400, detail="No file provided")
-    if "/" in raw_filename or "\\" in raw_filename or "\x00" in raw_filename:
+
+    # Securely extract the basename to prevent path traversal attacks.
+    # os.path.basename is safer than Path() for untrusted input.
+    import os
+
+    basename = os.path.basename(raw_filename)
+
+    if not basename or basename in (".", "..") or "\x00" in basename:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
 
-    # Prevent path traversal: reject absolute paths or any parent-directory ("..") segments
-    raw_path = Path(raw_filename)
-    if raw_path.is_absolute() or any(part == ".." for part in raw_path.parts):
-        raise HTTPException(status_code=400, detail=INVALID_FILENAME)
-
-    basename = raw_path.name
-    if not basename or basename in (".", ".."):
-        raise HTTPException(status_code=400, detail=INVALID_FILENAME)
     if len(basename) > 255:
         raise HTTPException(status_code=400, detail="Filename too long")
 
@@ -88,7 +88,13 @@ def _sanitize_and_validate_filename(raw_filename: str):
     else:
         name_part = basename
         ext = ""
-    safe_name_part = "".join(c for c in name_part if c.isalnum() or c in (" ", "-", "_")).rstrip()
+
+    import re
+
+    # Sanitize the name part by removing any characters that are not alphanumeric, space, hyphen, or underscore.
+    # This is more declarative and readable than a list comprehension.
+    safe_name_part = re.sub(r"[^a-zA-Z0-9 _-]", "", name_part).rstrip()
+
     if not safe_name_part:
         raise HTTPException(status_code=400, detail=INVALID_FILENAME)
     safe_filename = f"{safe_name_part}{ext}"
@@ -174,8 +180,20 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
         },
     )
 
-    parsed_data = document_parser.parse_document(content, safe_filename)
-    document_content = parsed_data.get("content", "")
+    try:
+        parsed_data = document_parser.parse_document(content, safe_filename)
+        document_content = parsed_data.get("content", "")
+        if not document_content:
+            raise HTTPException(status_code=400, detail="Failed to extract content from document")
+    except Exception as e:
+        logger.error(
+            f"Failed to parse document: {e}",
+            additional_info={"filename": safe_filename},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to parse document. It may be corrupt or in an unsupported format.",
+        )
 
     # Check if identical document already exists
     cached_submission = await document_cache_service.get_cached_submission(document_content)
@@ -199,7 +217,6 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     submission_data = {
         "title": safe_filename,
         "content": document_content,
-        "original_file": content,  # Store original file for download
         "file_metadata": {
             **parsed_data.get("metadata", {}),
             "original_filename": safe_filename,
@@ -207,20 +224,20 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
         },
         "status": TaskStatus.PENDING.value,
         "created_at": datetime.now(timezone.utc),
-        "user_id": str(user["_id"]),  # Track submission owner
+        "user_id": str(user.get("_id")),  # Track submission owner
         "user_email": user.get("email"),  # Track user email for reference
     }
 
+    # Apply full rate limiting for new submissions
     # Apply full rate limiting for new submissions
     from app.middleware.rate_limiter import rate_limiter
 
     rate_limiter.check_upload_limit(client_ip, is_cached=False)
 
-    submission_id = await mongodb_service.save_submission(submission_data)
+    submission_id = await mongodb_service.save_submission(submission_data, content)
 
     # Audit log submission
     await audit_logger.log_submission(submission_id, str(user["_id"]), user["email"], client_ip)
-
     # Cache the submission for future identical uploads
     await document_cache_service.cache_submission(
         document_content,
@@ -256,7 +273,7 @@ async def _process_upload_manuscript(file: UploadFile, client_ip: str, x_timezon
     task = asyncio.create_task(
         orchestrator.process_submission(submission_id, client_ip, x_timezone)
     )
-    task.add_done_callback(lambda t: None)
+    task.add_done_callback(_handle_task_completion)
 
     return {
         "submission_id": submission_id,
@@ -287,7 +304,7 @@ async def upload_manuscript(
         return await _process_upload_manuscript(file, client_ip, x_timezone, user)
     except HTTPException:
         raise
-    except Exception as e:
+    except (IOError, ValueError, TypeError) as e:
         logger.error(
             e,
             additional_info={
@@ -296,6 +313,16 @@ async def upload_manuscript(
             },
         )
         raise HTTPException(status_code=500, detail="Failed to process manuscript upload")
+
+
+def _handle_task_completion(task: asyncio.Task) -> None:
+    """Log exceptions from background tasks to prevent them from being silenced."""
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.warning("Submission processing task was cancelled.")
+    except Exception as e:
+        logger.error(f"Error during background submission processing: {e}", exc_info=True)
 
 
 def _convert_field_with_logging(
@@ -346,6 +373,12 @@ async def get_submission(
     if not submission_id or not submission_id.strip():
         raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
 
+    # Validate timezone to prevent server errors on invalid input
+    try:
+        ZoneInfo(x_timezone)
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid timezone: '{x_timezone}'")
+
     """
     Retrieve complete submission details by ID.
 
@@ -376,7 +409,6 @@ async def get_submission(
             "final_report": "# Executive Summary...",
             "created_at": "2024-01-15T10:30:00Z"
         }
-
     Raises:
         HTTPException: 404 if submission not found, 500 for server errors
     """
@@ -390,6 +422,8 @@ async def get_submission(
         _convert_field_with_logging(submission, "completed_at", submission_id, x_timezone)
 
         return submission
+    except InvalidId:
+        raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
     except HTTPException:
         raise
     except Exception as e:
@@ -513,6 +547,8 @@ async def get_final_report(
             "status": submission["status"],
             "disclaimer": disclaimer_info.get("disclaimer", ""),
         }
+    except InvalidId:
+        raise HTTPException(status_code=400, detail=INVALID_SUBMISSION_ID)
     except HTTPException:
         raise
     except Exception as e:
@@ -581,7 +617,7 @@ def _ensure_buffer_seekable(buffer_like):
         try:
             buffer_like.seek(0)
             return buffer_like
-        except Exception:
+        except (IOError, OSError):
             seek = None
 
     # Fallback: read bytes and recreate a BytesIO, closing original if possible
@@ -632,6 +668,30 @@ def _build_content_disposition_header(filename: str, submission_id: str) -> dict
         return {"Content-Disposition": 'attachment; filename="manuscript_reviewed.pdf"'}
 
 
+async def _pdf_stream_generator(submission: dict, submission_id: str):
+    """Asynchronous generator to stream PDF content, improving memory efficiency."""
+    try:
+        # Generate PDF into a memory buffer
+        pdf_buffer = pdf_generator.generate_review_pdf(
+            submission, submission.get("final_report", "")
+        )
+        pdf_buffer = _ensure_buffer_seekable(pdf_buffer)
+
+        # Stream the buffer in chunks
+        while chunk := pdf_buffer.read(8192):
+            yield chunk
+    except Exception as e:
+        logger.error(
+            f"Error during PDF stream generation: {e}",
+            additional_info={"submission_id": submission_id},
+        )
+        # Yield nothing on error to gracefully end the stream
+    finally:
+        # Ensure buffer is closed to release resources
+        if "pdf_buffer" in locals() and hasattr(pdf_buffer, "close"):
+            pdf_buffer.close()
+
+
 @router.get(
     "/submissions/{submission_id}/download",
     summary="Download PDF Report",
@@ -657,18 +717,15 @@ async def download_report_pdf(submission_id: str):
         if submission["status"] != TaskStatus.COMPLETED.value:
             raise HTTPException(status_code=400, detail="Review not completed yet")
 
-        # Generate PDF and normalize buffer
-        pdf_buffer = pdf_generator.generate_review_pdf(
-            submission, submission.get("final_report", "")
-        )
-        pdf_buffer = _ensure_buffer_seekable(pdf_buffer)
-
         # Build filename and headers
         filename = _build_report_filename(submission)
         headers = _build_content_disposition_header(filename, submission_id)
 
+        # Use an async generator for memory-efficient streaming
+        pdf_generator_iterator = _pdf_stream_generator(submission, submission_id)
+
         return StreamingResponse(
-            pdf_buffer,
+            pdf_generator_iterator,
             media_type=PDF_MEDIA_TYPE,
             headers=headers,
         )
@@ -716,11 +773,9 @@ async def get_langgraph_status():
                 "detail": "LangGraph status check failed",
             },
         )
-        return {
-            "langgraph_integrated": False,
-            "status": "error",
-            "message": "Integration error occurred while checking LangGraph status",
-        }
+        raise HTTPException(
+            status_code=503, detail="Service unavailable: LangGraph integration error"
+        )
 
 
 def _convert_to_timezone(dt: datetime, tz_string: str) -> datetime:

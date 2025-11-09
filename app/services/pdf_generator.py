@@ -86,13 +86,11 @@ class PDFReportGenerator:
         """
         try:
             return Paragraph(text, style)
-        except Exception:
+        except ValueError as e:
             style_name = getattr(style, "name", "unknown")
             self.logger.error(
-                Exception(
-                    f"Failed to create Paragraph with style {style_name}, fallback to Normal"
-                ),
-                {"component": "pdf_generator", "function": "_safe_paragraph"},
+                f"Failed to create Paragraph with style {style_name}, fallback to Normal: {e}",
+                extra={"component": "pdf_generator", "function": "_safe_paragraph"},
             )
             return Paragraph(self._escape_text(text), self.styles["Normal"])
 
@@ -210,48 +208,39 @@ class PDFReportGenerator:
     def _parse_review_content(self, content: str) -> list:
         elements: List[Any] = []
         lines = content.split("\n")
-        current_section: List[str] = []
 
         for line in lines:
             line = line.strip()
             if not line:
                 continue
 
-            handled, current_section = self._handle_special_line(line, elements, current_section)
-            if handled:
-                continue
-
-            # Regular paragraphs (fallback)
-            clean_line = self._clean_markdown(line)
-            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicBodyText"]))
-
-        # Process any remaining section
-        if current_section:
-            elements.extend(self._process_section(current_section))
+            if not self._handle_special_line(line, elements):
+                # Regular paragraphs (fallback)
+                clean_line = self._clean_markdown(line)
+                elements.append(self._safe_paragraph(clean_line, self.styles["AcademicBodyText"]))
 
         return elements
 
-    def _handle_special_line(self, line: str, elements: list, current_section: list) -> tuple:
+    def _handle_special_line(self, line: str, elements: list) -> bool:
         # Handles section headers, subsections, bullets and numbered lists.
-        # Returns (handled: bool, current_section: list)
+        # Returns True if handled, False otherwise.
         if line.startswith("## "):
-            if current_section:
-                elements.extend(self._process_section(current_section))
-                current_section = []
             header = line[3:].strip()
             elements.append(self._safe_paragraph(header, self.styles["AcademicSectionHeader"]))
-            return True, current_section
+            return True
 
         if line.startswith("### "):
             header = line[4:].strip()
             elements.append(self._safe_paragraph(header, self.styles["AcademicSubHeader"]))
-            return True, current_section
+            return True
 
         # Handle Line-by-Line Recommendations with better formatting
-        if line.startswith("Line ") and ":" in line:
+        if line.startswith("**Line ") or (line.startswith("Line ") and ":" in line):
             clean_line = self._clean_markdown(line)
-            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicIssueText"]))
-            return True, current_section
+            # Use a more prominent style for line-specific findings
+            elements.append(self._safe_paragraph(clean_line, self.styles["AcademicBodyText"]))
+            elements.append(Spacer(1, 4))  # Add small space after each finding
+            return True
 
         if line.startswith("- "):
             bullet_text = line[2:].strip()
@@ -259,14 +248,14 @@ class PDFReportGenerator:
             elements.append(
                 self._safe_paragraph(f"• {clean_bullet}", self.styles["AcademicIssueText"])
             )
-            return True, current_section
+            return True
 
         if re.match(r"^\d+\.", line):
             clean_line = self._clean_markdown(line)
             elements.append(self._safe_paragraph(clean_line, self.styles["AcademicIssueText"]))
-            return True, current_section
+            return True
 
-        return False, current_section
+        return False
 
     def _process_section(self, section_lines: list) -> list:
         elements: List[Any] = []
@@ -300,6 +289,11 @@ class PDFReportGenerator:
 
     def generate_review_pdf(self, submission: Dict[str, Any], review_content: str) -> BytesIO:
         """Generate PDF for review report - matches API call signature"""
+        if not isinstance(submission, dict):
+            raise TypeError("Submission must be a dictionary")
+        if not isinstance(review_content, str):
+            review_content = str(review_content) if review_content else "No content available"
+
         return self.generate_pdf_report(review_content, submission)
 
 

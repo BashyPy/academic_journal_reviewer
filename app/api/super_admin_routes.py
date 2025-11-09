@@ -1,11 +1,13 @@
 """Super Admin Dashboard API Routes"""
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 from app.middleware.dual_auth import get_current_user
 from app.models.roles import UserRole
@@ -41,6 +43,10 @@ MONGO_MATCH = "$match"
 def require_super_admin(user: dict = Depends(get_current_user)):
     """Require super admin role"""
     if user.get("role") != UserRole.SUPER_ADMIN.value:
+        logger.warning(
+            "Unauthorized access attempt by user %s to super admin area.",
+            user.get("email"),
+        )
         raise HTTPException(status_code=403, detail="Super admin access required")
     return user
 
@@ -59,13 +65,29 @@ async def get_dashboard_stats(_admin: dict = Depends(require_super_admin)):
     """Get comprehensive system statistics"""
     db = await mongodb_service.get_database()
 
+    (
+        total_users,
+        total_submissions,
+        active_reviews,
+        completed_reviews,
+        failed_reviews,
+        total_audit_logs,
+    ) = await asyncio.gather(
+        db.users.count_documents({}),
+        db.submissions.count_documents({}),
+        db.submissions.count_documents({"status": "processing"}),
+        db.submissions.count_documents({"status": "completed"}),
+        db.submissions.count_documents({"status": "failed"}),
+        db.audit_logs.count_documents({}),
+    )
+
     stats = {
-        "total_users": await db.users.count_documents({}),
-        "total_submissions": await db.submissions.count_documents({}),
-        "active_reviews": await db.submissions.count_documents({"status": "processing"}),
-        "completed_reviews": await db.submissions.count_documents({"status": "completed"}),
-        "failed_reviews": await db.submissions.count_documents({"status": "failed"}),
-        "total_audit_logs": await db.audit_logs.count_documents({}),
+        "total_users": total_users,
+        "total_submissions": total_submissions,
+        "active_reviews": active_reviews,
+        "completed_reviews": completed_reviews,
+        "failed_reviews": failed_reviews,
+        "total_audit_logs": total_audit_logs,
         "security_stats": security_monitor.get_stats(),
     }
 
@@ -113,21 +135,25 @@ async def get_audit_logs(  # pylint: disable=too-many-arguments,too-many-positio
 async def delete_user(user_id: str, req: Request, admin: dict = Depends(require_super_admin)):
     """Delete a user (super admin only)"""
 
-    db = await mongodb_service.get_database()
-    result = await db.users.delete_one({"_id": ObjectId(user_id)})
+    try:
+        db = await mongodb_service.get_database()
+        result = await db.users.delete_one({"_id": ObjectId(user_id)})
 
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
 
-    await audit_logger.log_event(
-        event_type="user_deleted",
-        user_id=str(admin["_id"]),
-        user_email=admin.get("email"),
-        ip_address=get_client_ip(req),
-        details={"deleted_user_id": user_id},
-        severity="warning",
-    )
+        await audit_logger.log_event(
+            event_type="user_deleted",
+            user_id=str(admin["_id"]),
+            user_email=admin.get("email"),
+            ip_address=get_client_ip(req),
+            details={"deleted_user_id": user_id},
+            severity="warning",
+        )
 
+        return {"message": "User deleted successfully"}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid user ID format") from None
     return {"message": "User deleted successfully"}
 
 
@@ -145,23 +171,26 @@ async def update_user_role(
 
     db = await mongodb_service.get_database()
 
-    result = await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"role": role, "updated_at": datetime.now()}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
+    try:
+        result = await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"role": role, "updated_at": datetime.now()}},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND)
 
-    await audit_logger.log_event(
-        event_type="user_role_updated",
-        user_id=str(admin["_id"]),
-        user_email=admin.get("email"),
-        ip_address=get_client_ip(req),
-        details={"target_user_id": user_id, "new_role": role},
-        severity="info",
-    )
+        await audit_logger.log_event(
+            event_type="user_role_updated",
+            user_id=str(admin["_id"]),
+            user_email=admin.get("email"),
+            ip_address=get_client_ip(req),
+            details={"target_user_id": user_id, "new_role": role},
+            severity="info",
+        )
 
-    return {"message": "User role updated successfully"}
+        return {"message": "User role updated successfully"}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid user ID format") from None
 
 
 @router.patch("/users/{user_id}/status")
@@ -176,16 +205,20 @@ async def update_user_status(
 
 
 class CreateUserRequest(BaseModel):
-    email: str
-    password: str
-    name: str
+    email: EmailStr
+    password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters long"
+    )
+    name: str = Field(..., min_length=1, description="Name cannot be empty")
     role: str
     username: Optional[str] = None
 
 
 class ResetPasswordRequest(BaseModel):
     user_id: str
-    new_password: str
+    new_password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters long"
+    )
 
 
 @router.post("/users/create")
@@ -235,7 +268,7 @@ async def get_domain_analytics_route(_admin: dict = Depends(require_super_admin)
     return await get_domain_analytics()
 
 
-@router.post("/system/clear-cache")
+@router.post("/system/clear-cache", status_code=204)
 async def clear_system_cache(req: Request, admin: dict = Depends(require_super_admin)):
     """Clear system cache"""
     cache_service.clear_all()  # pylint: disable=no-member
@@ -247,8 +280,6 @@ async def clear_system_cache(req: Request, admin: dict = Depends(require_super_a
         ip_address=get_client_ip(req),
         severity="info",
     )
-
-    return {"message": "System cache cleared successfully"}
 
 
 @router.get("/system/health")
@@ -274,7 +305,17 @@ async def get_system_health(_admin: dict = Depends(require_super_admin)):
 async def list_api_keys(_admin: dict = Depends(require_super_admin)):
     """List all API keys"""
     db = await mongodb_service.get_database()
-    keys = await db.api_keys.find({}).to_list(length=100)
+    projection = {
+        "user_id": 1,
+        "key": 1,
+        "created_at": 1,
+        "expires_at": 1,
+        "is_active": 1,
+        "revoked_at": 1,
+        "last_used_at": 1,
+        "permissions": 1,
+    }
+    keys = await db.api_keys.find({}, projection).to_list(length=100)
 
     for key in keys:
         key["_id"] = str(key["_id"])
@@ -287,25 +328,28 @@ async def list_api_keys(_admin: dict = Depends(require_super_admin)):
 async def revoke_api_key(key_id: str, req: Request, admin: dict = Depends(require_super_admin)):
     """Revoke an API key"""
 
-    db = await mongodb_service.get_database()
-    result = await db.api_keys.update_one(
-        {"_id": ObjectId(key_id)},
-        {"$set": {"is_active": False, "revoked_at": datetime.now()}},
-    )
+    try:
+        db = await mongodb_service.get_database()
+        result = await db.api_keys.update_one(
+            {"_id": ObjectId(key_id)},
+            {"$set": {"is_active": False, "revoked_at": datetime.now()}},
+        )
 
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="API key not found")
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="API key not found")
 
-    await audit_logger.log_event(
-        event_type="api_key_revoked",
-        user_id=str(admin["_id"]),
-        user_email=admin.get("email"),
-        ip_address=get_client_ip(req),
-        details={"key_id": key_id},
-        severity="warning",
-    )
+        await audit_logger.log_event(
+            event_type="api_key_revoked",
+            user_id=str(admin["_id"]),
+            user_email=admin.get("email"),
+            ip_address=get_client_ip(req),
+            details={"key_id": key_id},
+            severity="warning",
+        )
 
-    return {"message": "API key revoked successfully"}
+        return {"message": "API key revoked successfully"}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid API key ID format") from None
 
 
 @router.get("/analytics/performance")
@@ -319,25 +363,31 @@ async def get_performance_metrics_route(_admin: dict = Depends(require_super_adm
 @router.get("/analytics/user-activity")
 async def get_user_activity(_admin: dict = Depends(require_super_admin), days: int = 7):
     """Get user activity statistics"""
-    db = await mongodb_service.get_database()
-    start_date = datetime.now() - timedelta(days=days)
+    try:
+        db = await mongodb_service.get_database()
+        start_date = datetime.now() - timedelta(days=days)
 
-    pipeline = [
-        {MONGO_MATCH: {"timestamp": {"$gte": start_date}}},
-        {
-            MONGO_GROUP: {
-                "_id": "$user_id",
-                "event_count": {"$sum": 1},
-                "last_activity": {"$max": "$timestamp"},
-            }
-        },
-        {MONGO_SORT: {"event_count": -1}},
-        {"$limit": 20},
-    ]
+        pipeline = [
+            {MONGO_MATCH: {"timestamp": {"$gte": start_date}}},
+            {
+                MONGO_GROUP: {
+                    "_id": "$user_id",
+                    "event_count": {"$sum": 1},
+                    "last_activity": {"$max": "$timestamp"},
+                }
+            },
+            {MONGO_SORT: {"event_count": -1}},
+            {"$limit": 20},
+        ]
 
-    results = await db.audit_logs.aggregate(pipeline).to_list(length=20)
+        results = await db.audit_logs.aggregate(pipeline).to_list(length=20)
 
-    return {"user_activity": results, "period_days": days}
+        return {"user_activity": results, "period_days": days}
+    except Exception as e:
+        logger.error("Error fetching user activity: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch user activity statistics."
+        ) from e
 
 
 @router.post("/submissions/{submission_id}/reprocess")

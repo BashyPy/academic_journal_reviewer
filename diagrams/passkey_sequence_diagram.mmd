@@ -8,7 +8,7 @@ sequenceDiagram
     participant D as Device Biometric
 
     Note over U,D: Passkey Registration Flow
-    
+
     U->>F: Navigate to Profile
     U->>F: Click Register Biometric
     F->>API: POST /passkey/register-options
@@ -26,7 +26,7 @@ sequenceDiagram
     F->>U: Show success message
 
     Note over U,D: Passkey Authentication Flow
-    
+
     U->>F: Click Login with Biometric
     F->>API: POST /passkey/auth-options
     API->>DB: Create challenge

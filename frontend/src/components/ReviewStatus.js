@@ -83,7 +83,7 @@ const ReviewStatus = ({ submissionId }) => {
     );
   }
 
-  const overallProgress = status.tasks ? 
+  const overallProgress = status.tasks ?
     Math.round((status.tasks.filter(t => t.status === 'completed').length / status.tasks.length) * 100) : 0;
 
   return (

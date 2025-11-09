@@ -31,24 +31,53 @@ class OTPService:
         otp = self.generate_otp()
         expires_at = datetime.now() + timedelta(minutes=self.otp_expiry_minutes)
 
-        # Update user record with OTP
-        await self.collection.update_one(
-            {"email": email},
-            {
-                "$set": {
-                    "otp": otp,
-                    "otp_purpose": purpose,
-                    "otp_expires_at": expires_at,
-                    "updated_at": datetime.now(),
-                }
-            },
-        )
+        try:
+            # Update user record with OTP
+            result = await self.collection.update_one(
+                {"email": email},
+                {
+                    "$set": {
+                        "otp": otp,
+                        "otp_purpose": purpose,
+                        "otp_expires_at": expires_at,
+                        "updated_at": datetime.now(),
+                    }
+                },
+            )
 
-        logger.info(f"OTP created for {email} with purpose: {purpose}")
-        return otp
+            if result.matched_count == 0:
+                logger.warning(f"Attempted to create OTP for non-existent user: {email}")
+                raise ValueError(f"User with email {email} not found.")
+
+            logger.info(f"OTP created for {email} with purpose: {purpose}")
+            return otp
+        except Exception as e:
+            logger.error(f"Failed to create OTP for {email}: {e}")
+            raise
+
+    async def _clear_expired_otp(self, email: str):
+        """Clear expired OTP for a user."""
+        if not self.collection:
+            logger.error("OTP clearing failed: database collection not initialized.")
+            return
+        try:
+            await self.collection.update_one(
+                {"email": email},
+                {
+                    "$unset": {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
+                    "$set": {"updated_at": datetime.now()},
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to clear expired OTP for {email}: {e}")
+            # Depending on requirements, this might need to raise the exception.
 
     async def verify_otp(self, email: str, otp: str, purpose: str) -> bool:
         """Verify OTP for user"""
+        if not all(isinstance(arg, str) and arg for arg in [email, otp, purpose]):
+            logger.warning("Invalid arguments provided to verify_otp")
+            return False
+
         await self.initialize()
 
         user = await self.collection.find_one({"email": email})
@@ -59,24 +88,11 @@ class OTPService:
         stored_purpose = user.get("otp_purpose")
         expires_at = user.get("otp_expires_at")
 
-        # Check if OTP exists and matches
-        if not stored_otp or stored_otp != otp:
+        if stored_otp != otp or stored_purpose != purpose:
             return False
 
-        # Check if purpose matches
-        if stored_purpose != purpose:
-            return False
-
-        # Check if OTP is expired
         if not expires_at or datetime.now() > expires_at:
-            # Clear expired OTP
-            await self.collection.update_one(
-                {"email": email},
-                {
-                    "$unset": {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
-                    "$set": {"updated_at": datetime.now()},
-                },
-            )
+            await self._clear_expired_otp(email)
             return False
 
         logger.info(f"OTP verified for {email} with purpose: {purpose}")

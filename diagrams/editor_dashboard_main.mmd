@@ -1,45 +1,45 @@
 %%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e3f2fd','primaryTextColor':'#000','primaryBorderColor':'#1976d2','lineColor':'#333','secondaryColor':'#fff3e0','tertiaryColor':'#f3e5f5','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ffffff','tertiaryBkg':'#ffffff'}}}%%
 graph TD
     A[Journal Editor] --> B[Editor Dashboard UI]
-    
+
     B --> C[Overview Tab]
     B --> D[All Submissions Tab]
     B --> E[Analytics Tab]
-    
+
     C --> F[Statistics Cards]
     C --> G[Performance Metrics]
     C --> H[Recent Submissions]
-    
+
     D --> I[Submission List]
     D --> J[Status Filter]
     D --> K[Action Buttons]
-    
+
     E --> L[Timeline Chart]
     E --> M[Domain Distribution]
     E --> N[Status Breakdown]
-    
+
     K --> O[View Details]
     K --> P[Download Report]
     K --> Q[Make Decision]
     K --> R[Reprocess]
-    
+
     Q --> S[Decision Modal]
     S --> T[Accept/Revise/Reject]
     S --> U[Editorial Comments]
-    
+
     B --> V[Editor API Routes]
     V --> W[MongoDB Database]
-    
+
     V --> X["/dashboard/stats"]
     V --> Y["/submissions"]
     V --> Z["/submissions/:id/decision"]
     V --> AA["/submissions/:id/reprocess"]
     V --> AB["/analytics/*"]
-    
+
     W --> AC[submissions Collection]
     W --> AD[agent_tasks Collection]
     W --> AE[audit_logs Collection]
-    
+
     style B fill:#e3f2fd,stroke:#1976d2,color:#000
     style V fill:#fff3e0,stroke:#f57c00,color:#000
     style W fill:#f3e5f5,stroke:#7b1fa2,color:#000

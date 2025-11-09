@@ -5,11 +5,18 @@ from fastapi import Depends, HTTPException, status
 from app.middleware.auth import get_api_key
 from app.models.roles import Permission, has_permission
 
+AUTH_REQUIRED_DETAIL = "Authentication required"
+
 
 def require_permission(permission: Permission):
-    """Dependency to require specific permission"""
+    """Dependency factory for requiring a specific permission."""
 
     def check_permission(user: dict = Depends(get_api_key)):
+        if not user or not isinstance(user, dict):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=AUTH_REQUIRED_DETAIL,
+            )
         user_role = user.get("role", "author")
         if not has_permission(user_role, permission):
             raise HTTPException(
@@ -21,10 +28,15 @@ def require_permission(permission: Permission):
     return check_permission
 
 
-def require_any_permission(*permissions: Permission):
-    """Dependency to require any of the specified permissions"""
+def require_any_permission(permissions: list[Permission]):
+    """Dependency factory for requiring any of a list of permissions."""
 
     def check_permissions(user: dict = Depends(get_api_key)):
+        if not user or not isinstance(user, dict):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=AUTH_REQUIRED_DETAIL,
+            )
         user_role = user.get("role", "author")
         if not any(has_permission(user_role, perm) for perm in permissions):
             raise HTTPException(
@@ -35,14 +47,20 @@ def require_any_permission(*permissions: Permission):
     return check_permissions
 
 
-def require_role(*roles: str):
-    """Dependency to require specific role(s)"""
+def require_role(roles: list[str]):
+    """Dependency factory for requiring a specific role."""
 
     def check_role(user: dict = Depends(get_api_key)):
+        if not user or not isinstance(user, dict):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=AUTH_REQUIRED_DETAIL,
+            )
         user_role = user.get("role", "author")
         if user_role not in roles:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail=f"Role required: {', '.join(roles)}"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role required: {', '.join(roles)}",
             )
         return user
 

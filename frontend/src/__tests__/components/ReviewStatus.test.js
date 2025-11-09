@@ -14,9 +14,9 @@ describe('ReviewStatus Component', () => {
 
   test('renders loading state initially', () => {
     mockedAxios.get.mockImplementationOnce(() => new Promise(() => {}));
-    
+
     render(<ReviewStatus submissionId="test-id" />);
-    
+
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
@@ -35,7 +35,7 @@ describe('ReviewStatus Component', () => {
     });
 
     render(<ReviewStatus submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/review status/i)).toBeInTheDocument();
       expect(screen.getByText(/processing/i)).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('ReviewStatus Component', () => {
     });
 
     render(<ReviewStatus submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/review is complete/i)).toBeInTheDocument();
       expect(screen.getByText('Status: completed')).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('ReviewStatus Component', () => {
     });
 
     render(<ReviewStatus submissionId="invalid-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/error/i)).toBeInTheDocument();
       expect(screen.getByText(/submission not found/i)).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe('ReviewStatus Component', () => {
 
   test('auto-refreshes status', async () => {
     jest.useFakeTimers();
-    
+
     mockedAxios.get
       .mockResolvedValueOnce({
         data: { status: 'processing', tasks: [] }
@@ -95,18 +95,18 @@ describe('ReviewStatus Component', () => {
       });
 
     render(<ReviewStatus submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/processing/i)).toBeInTheDocument();
     });
-    
+
     // Fast-forward time to trigger refresh
     jest.advanceTimersByTime(5000);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/completed/i)).toBeInTheDocument();
     });
-    
+
     jest.useRealTimers();
   });
 
@@ -124,7 +124,7 @@ describe('ReviewStatus Component', () => {
     });
 
     render(<ReviewStatus submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/✓/)).toBeInTheDocument(); // completed
       expect(screen.getByText(/⏳/)).toBeInTheDocument(); // running

@@ -10,15 +10,17 @@ services:
       - MONGODB_URL=${MONGODB_URL}
       - MONGODB_DATABASE=${MONGODB_DATABASE}
       - DEFAULT_LLM=${DEFAULT_LLM}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
+      - SUPER_ADMIN_USERNAME=${SUPER_ADMIN_USERNAME}
+      - SUPER_ADMIN_NAME=${SUPER_ADMIN_NAME}
+      - JWT_SECRET=${JWT_SECRET}
       - TESTING=false
     env_file:
       - ../.env
     volumes:
       - ../app:/app/app
       - ../logs:/app/logs
-    depends_on:
-      mongodb:
-        condition: service_healthy
     networks:
       - aaris-network
     restart: unless-stopped
@@ -45,32 +47,6 @@ services:
       - aaris-network
     restart: unless-stopped
 
-  mongodb:
-    image: mongo:7.0
-    container_name: aaris-mongodb-dev
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=${MONGODB_DATABASE}
-    volumes:
-      - mongodb_dev_data:/data/db
-      - mongodb_dev_config:/data/configdb
-    networks:
-      - aaris-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
 networks:
   aaris-network:
     driver: bridge
-
-volumes:
-  mongodb_dev_data:
-    driver: local
-  mongodb_dev_config:
-    driver: local

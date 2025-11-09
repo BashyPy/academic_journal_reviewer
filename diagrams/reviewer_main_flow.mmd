@@ -1,54 +1,54 @@
 %%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#3498db','primaryTextColor':'#000','primaryBorderColor':'#2980b9','lineColor':'#34495e','background':'#ffffff','mainBkg':'#ffffff','secondBkg':'#ecf0f1'}}}%%
 graph TD
     A[Reviewer Login] --> B[Reviewer Dashboard]
-    
+
     B --> C[Overview Tab]
     B --> D[My Assignments Tab]
     B --> E[Analytics Tab]
-    
+
     C --> C1[Statistics Cards]
     C --> C2[Recent Assignments]
     C --> C3[Performance Metrics]
-    
+
     D --> D1[All Assignments List]
     D --> D2[Status Filter]
     D --> D3[Assignment Actions]
-    
+
     D3 --> D3A[Start Review]
     D3 --> D3B[Continue Review]
     D3 --> D3C[View Completed]
-    
+
     D3A --> F[Review Form]
     D3B --> F
-    
+
     F --> F1[Manuscript Preview]
     F --> F2[Scoring System]
     F --> F3[Qualitative Feedback]
     F --> F4[Recommendation]
-    
+
     F2 --> F2A[Methodology Score]
     F2 --> F2B[Literature Score]
     F2 --> F2C[Clarity Score]
     F2 --> F2D[Ethics Score]
     F2 --> F2E[Overall Score]
-    
+
     F3 --> F3A[Strengths]
     F3 --> F3B[Weaknesses]
     F3 --> F3C[Detailed Comments]
-    
+
     F4 --> F4A[Accept]
     F4 --> F4B[Minor Revisions]
     F4 --> F4C[Major Revisions]
     F4 --> F4D[Reject]
-    
+
     F --> G[Submit Review]
     G --> H[Review Completed]
     H --> I[Editor Notification]
-    
+
     E --> E1[Timeline Chart]
     E --> E2[Domain Distribution]
     E --> E3[Performance Data]
-    
+
     style B fill:#3498db,stroke:#2980b9,color:#fff
     style F fill:#e74c3c,stroke:#c0392b,color:#fff
     style G fill:#27ae60,stroke:#229954,color:#fff

@@ -4,21 +4,21 @@ sequenceDiagram
     participant UI as Dashboard UI
     participant API as Backend API
     participant DB as MongoDB
-    
+
     R->>UI: Access Dashboard
     UI->>API: GET /reviewer/dashboard/stats
     API->>DB: Query assignments
     DB-->>API: Return data
     API-->>UI: Statistics
     UI-->>R: Display Overview
-    
+
     R->>UI: Click "Start Review"
     UI->>API: POST /assignments/{id}/start
     API->>DB: Update status to "in_progress"
     DB-->>API: Confirm update
     API-->>UI: Success response
     UI-->>R: Show Review Form
-    
+
     R->>UI: Fill Review Form
     R->>UI: Click "Submit Review"
     UI->>API: POST /assignments/{id}/submit

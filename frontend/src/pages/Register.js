@@ -4,7 +4,7 @@ import authService from '../services/authService';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 
 const Register = () => {
-  const [formData, setFormData] = useState({ email: '', password: '', name: '' });
+  const [formData, setFormData] = useState({ email: '', password: '', name: '', username: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +20,7 @@ const Register = () => {
     setLoading(true);
 
     try {
-      await authService.register(formData.email, formData.password, formData.name);
+      await authService.register(formData.email, formData.password, formData.name, formData.username);
       navigate('/verify-email', { state: { email: formData.email } });
     } catch (err) {
       setError(err.response?.data?.detail || 'Registration failed');
@@ -43,6 +43,19 @@ const Register = () => {
               onChange={handleChange}
               required
               placeholder="Your full name"
+            />
+          </div>
+          <div className="form-group">
+            <label>Username</label>
+            <input
+              type="text"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              placeholder="username (letters, numbers, - and _)"
+              minLength="3"
+              maxLength="30"
+              pattern="[a-zA-Z0-9_-]+"
             />
           </div>
           <div className="form-group">

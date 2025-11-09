@@ -87,8 +87,8 @@ const PasskeyManager = () => {
       {error && <div className="error">❌ {error}</div>}
       {success && <div className="success">✅ {success}</div>}
 
-      <button 
-        onClick={handleRegister} 
+      <button
+        onClick={handleRegister}
         disabled={loading}
         className="auth-button"
         style={{ marginBottom: '20px' }}
@@ -101,9 +101,9 @@ const PasskeyManager = () => {
           <h4>Registered Biometric Methods</h4>
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {passkeys.map((passkey, index) => (
-              <li 
-                key={passkey.id} 
-                style={{ 
+              <li
+                key={passkey.id}
+                style={{
                   padding: '10px',
                   border: '1px solid #ddd',
                   borderRadius: '5px',
@@ -121,7 +121,7 @@ const PasskeyManager = () => {
                     </span>
                   )}
                 </span>
-                <button 
+                <button
                   onClick={() => handleDelete(passkey.id)}
                   disabled={loading}
                   style={{

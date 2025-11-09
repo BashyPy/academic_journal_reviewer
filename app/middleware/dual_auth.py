@@ -17,32 +17,35 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def _prepare_user(user: dict) -> dict:
+    """Ensure user_id is set from _id for consistency."""
+    user["user_id"] = str(user.get("_id", ""))
+    return user
+
+
 async def get_current_user(
     api_key: Optional[str] = Security(api_key_header),
     credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
 ) -> dict:
     """Get current user from either JWT token or API key"""
-
     # Try JWT token first
     if credentials:
-        token = credentials.credentials
-        payload = decode_access_token(token)
+        try:
+            payload = decode_access_token(credentials.credentials)
+            if payload:
+                user = await user_service.get_user_by_email(payload["email"])
+                if user and user.get("active", True):
+                    return _prepare_user(user)
+        except Exception:
+            # Invalid token, proceed to check API key
+            pass
 
-        if payload:
-            user = await user_service.get_user_by_email(payload["email"])
-            if user and user.get("active", True):
-                # Ensure user_id is set to _id for consistency
-                user["user_id"] = str(user.get("_id", ""))
-                return user
-
-    # Try API key
+    # Try API key next
     if api_key:
         # Try new user system
         user = await user_service.get_user_by_api_key(api_key)
         if user:
-            # Ensure user_id is set to _id for consistency
-            user["user_id"] = str(user.get("_id", ""))
-            return user
+            return _prepare_user(user)
 
         # Fallback to old API key system
         user = await auth_service.validate_api_key(api_key)
@@ -60,7 +63,7 @@ async def get_current_user(
 def require_role(required_role: str):
     """Dependency factory for role-based access"""
 
-    async def role_checker(user: dict = Depends(get_current_user)) -> dict:
+    def role_checker(user: dict = Depends(get_current_user)) -> dict:
         if user.get("role") != required_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

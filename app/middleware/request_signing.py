@@ -16,6 +16,8 @@ class RequestSigner:
     """Request signature verification"""
 
     def __init__(self, secret_key: str):
+        if not isinstance(secret_key, str) or not secret_key:
+            raise ValueError("Secret key must be a non-empty string.")
         self.secret_key = secret_key.encode()
 
     def generate_signature(self, method: str, path: str, timestamp: str, body: str = "") -> str:
@@ -71,8 +73,12 @@ async def verify_request_signature(request: Request, signer: Optional[RequestSig
         try:
             body_bytes = await request.body()
             body = body_bytes.decode("utf-8")
-        except Exception:
-            pass
+        except (UnicodeDecodeError, RuntimeError) as e:
+            logger.warning("Failed to read or decode request body: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Malformed request body",
+            ) from e
 
     # Verify signature
     if not signer.verify_signature(

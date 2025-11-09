@@ -6,7 +6,7 @@ axios.interceptors.request.use(
     // Prefer JWT token over API key
     const accessToken = authService.getAccessToken();
     const apiKey = authService.getApiKey();
-    
+
     if (accessToken && !config.headers['Authorization']) {
       config.headers['Authorization'] = `Bearer ${accessToken}`;
     } else if (apiKey && !config.headers['X-API-Key']) {

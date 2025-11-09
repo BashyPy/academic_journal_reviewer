@@ -5,16 +5,16 @@ sequenceDiagram
     participant Auth as Auth Service
     participant DB as MongoDB
     participant Audit as Audit Logger
-    
+
     U->>API: GET /downloads/manuscripts/{id}
     API->>Auth: Verify Token
     Auth-->>API: User Info
-    
+
     API->>DB: Get Submission
     DB-->>API: Submission Data
-    
+
     API->>API: Check Permissions
-    
+
     alt Permission Granted
         API->>DB: Retrieve File
         DB-->>API: File Content

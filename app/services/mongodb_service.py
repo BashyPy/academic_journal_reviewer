@@ -25,7 +25,7 @@ class MongoDBService:
         self.submissions = self.db.submissions
         self.logger = get_logger()
 
-    async def get_database(self):
+    def get_database(self):
         """Get database instance"""
         return self.db
 
@@ -46,11 +46,7 @@ class MongoDBService:
             )
             return submission_id
         except Exception as e:
-            self.logger.exception(
-                e,
-                "Error saving submission",
-                additional_info={"operation": "save_submission"},
-            )
+            self.logger.exception("Error saving submission", additional_info={"error": str(e)})
             raise
 
     async def get_submission(self, submission_id: str) -> Optional[Dict[str, Any]]:
@@ -69,16 +65,30 @@ class MongoDBService:
             return doc
         except Exception as e:
             self.logger.exception(
-                e,
                 "Error retrieving submission",
                 additional_info={
                     "operation": "get_submission",
                     "submission_id": submission_id,
+                    "error": str(e),
                 },
             )
             raise
 
-    async def update_submission(self, submission_id: str, data: Dict[str, Any]):
+    async def update_submission(self, submission_id: str, data: Dict[str, Any]) -> bool:
+        """
+        Update a submission document by its ID.
+
+        Args:
+            submission_id (str): The ID of the submission to update.
+            data (Dict[str, Any]): The data to update in the submission.
+
+        Returns:
+            bool: True if the submission was updated, False if not found.
+
+        Raises:
+            ValueError: If the submission_id or data is invalid.
+            Exception: For other database errors.
+        """
         try:
             if not submission_id or not isinstance(submission_id, str):
                 raise ValueError(f"Invalid submission_id: {submission_id}")
@@ -89,7 +99,6 @@ class MongoDBService:
             try:
                 oid = ObjectId(submission_id)
             except Exception as e:
-                # Invalid ObjectId format, surface a clear error and keep original cause
                 self.logger.warning(f"Invalid ObjectId for submission_id: {submission_id}")
                 raise ValueError(f"Invalid submission_id: {submission_id}") from e
 
@@ -97,8 +106,8 @@ class MongoDBService:
 
             if result.matched_count == 0:
                 self.logger.warning(f"Submission not found: {submission_id}")
+                return False
             else:
-                # provide useful debug info about the update outcome
                 self.logger.debug(
                     f"Submission updated: {submission_id}",
                     additional_info={
@@ -107,15 +116,15 @@ class MongoDBService:
                         "modified_count": getattr(result, "modified_count", None),
                     },
                 )
+                return True
         except Exception as e:
-            # log the exception object consistently and include contextual information, then re-raise
             self.logger.exception(
-                e,
                 "Error updating submission",
                 additional_info={
                     "operation": "update_submission",
                     "submission_id": submission_id,
                     "data_keys": list(data.keys()) if isinstance(data, dict) else None,
+                    "error": str(e),
                 },
             )
             raise

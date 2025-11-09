@@ -5,19 +5,19 @@ stateDiagram-v2
     Registering --> BiometricPrompt: Generate Challenge
     BiometricPrompt --> Registered: Success
     BiometricPrompt --> NotRegistered: Cancel or Fail
-    
+
     Registered --> Authenticating: Click Login
     Authenticating --> BiometricAuth: Generate Challenge
     BiometricAuth --> Authenticated: Success
     BiometricAuth --> Registered: Cancel or Fail
-    
+
     Authenticated --> [*]: Logout
     Registered --> NotRegistered: Delete Passkey
-    
+
     note right of Registered
         User can have multiple passkeys registered
     end note
-    
+
     note right of BiometricAuth
         Biometric data never leaves the device
     end note

@@ -4,21 +4,21 @@ flowchart TD
     Check -->|No| Login[Login Required]
     Login --> Dashboard
     Check -->|Yes| Dashboard[View Dashboard]
-    
+
     Dashboard --> ViewAssignments[View Assignments]
     ViewAssignments --> Filter{Filter<br/>Status?}
     Filter -->|Pending| ShowPending[Show Pending]
     Filter -->|In Progress| ShowProgress[Show In Progress]
     Filter -->|Completed| ShowCompleted[Show Completed]
     Filter -->|All| ShowAll[Show All]
-    
+
     ShowPending --> StartReview[Click Start Review]
     StartReview --> RecordStart[Record Start Time]
     RecordStart --> ReviewForm[Display Review Form]
-    
+
     ShowProgress --> ContinueReview[Click Continue]
     ContinueReview --> ReviewForm
-    
+
     ReviewForm --> ReadManuscript[Read Manuscript]
     ReadManuscript --> ScoreCriteria[Score Criteria 1-10]
     ScoreCriteria --> WriteStrengths[Write Strengths]
@@ -26,18 +26,18 @@ flowchart TD
     WriteWeaknesses --> WriteComments[Write Comments]
     WriteComments --> SelectRecommendation[Select Recommendation]
     SelectRecommendation --> ValidateForm{All Fields<br/>Complete?}
-    
+
     ValidateForm -->|No| ReviewForm
     ValidateForm -->|Yes| SubmitReview[Submit Review]
-    
+
     SubmitReview --> SaveReview[Save to Database]
     SaveReview --> RecordCompletion[Record Completion Time]
     RecordCompletion --> NotifyEditor[Notify Editor]
     NotifyEditor --> End([Review Complete])
-    
+
     ShowCompleted --> ViewOnly[View Submitted Review]
     ViewOnly --> Dashboard
-    
+
     style Start fill:#3498db,stroke:#2980b9,color:#fff
     style ReviewForm fill:#e74c3c,stroke:#c0392b,color:#fff
     style SubmitReview fill:#27ae60,stroke:#229954,color:#fff

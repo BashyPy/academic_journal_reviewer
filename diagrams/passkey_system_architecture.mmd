@@ -6,16 +6,16 @@ graph LR
         C --> D[Secure Enclave TPM]
         D --> E[Biometric Sensor]
     end
-    
+
     subgraph Backend[AARIS Backend]
         F[FastAPI] --> G[WebAuthn Service]
         G --> H[MongoDB]
         H --> I[Passkeys Collection]
         H --> J[Challenges Collection]
     end
-    
+
     A <-->|HTTPS| F
-    
+
     style C fill:#4CAF50,stroke:#333
     style D fill:#FF9800,stroke:#333
     style E fill:#2196F3,stroke:#333

@@ -20,8 +20,8 @@ const PasswordStrengthMeter = ({ password }) => {
   return (
     <div className="password-strength">
       <div className="strength-bar">
-        <div 
-          className="strength-fill" 
+        <div
+          className="strength-fill"
           style={{ width: `${(strength / 5) * 100}%`, background: colors[strength - 1] }}
         />
       </div>

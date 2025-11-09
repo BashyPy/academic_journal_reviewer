@@ -66,8 +66,11 @@ class CacheService:
                     await mongodb_service.db[self.collection_name].delete_one(
                         {"cache_key": cache_key}
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to delete expired cache entry: {e}",
+                        additional_info={"operation": "cache_delete_stale", "cache_key": cache_key},
+                    )
 
             return None
         except Exception as e:
@@ -113,6 +116,9 @@ class CacheService:
     async def clear_expired(self) -> int:
         """Remove expired cache entries."""
         try:
+            if mongodb_service.db is None:
+                self.logger.warning("Database not available, skipping cache clearing.")
+                return 0
             now = datetime.now(timezone.utc)
             result = await mongodb_service.db[self.collection_name].delete_many(
                 {"expires_at": {"$lt": now}}

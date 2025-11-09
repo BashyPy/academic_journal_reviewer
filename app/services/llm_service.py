@@ -11,6 +11,9 @@ class LLMProvider(ABC):
 
 
 class GroqProvider(LLMProvider):
+    PRIMARY_MODEL_MAX_CHARS = 30000  # ~7.5k tokens for llama-3.3-70b-versatile
+    FALLBACK_MODEL_MAX_CHARS = 20000  # ~5k tokens for llama3-8b-8192
+
     def __init__(self):
         from groq import AsyncGroq
 
@@ -21,14 +24,16 @@ class GroqProvider(LLMProvider):
     async def generate_content(self, prompt: str) -> str:
         # Truncate prompt to stay within Groq's token limits
         # Groq llama-3.3-70b-versatile has 12k token limit
-        max_chars = 30000  # ~7.5k tokens, leaving room for response
-        if len(prompt) > max_chars:
-            prompt = prompt[:max_chars] + "\n\n[Content truncated due to token limits]"
+        if len(prompt) > self.PRIMARY_MODEL_MAX_CHARS:
+            prompt = (
+                prompt[: self.PRIMARY_MODEL_MAX_CHARS]
+                + "\n\n[Content truncated due to token limits]"
+            )
 
         try:
             # Try the larger model first
             response = await self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=self.primary_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=4000,
@@ -36,11 +41,14 @@ class GroqProvider(LLMProvider):
         except Exception as e:
             if "rate_limit_exceeded" in str(e) or "413" in str(e):
                 # Fallback to smaller model with further truncated prompt
-                if len(prompt) > 20000:
-                    prompt = prompt[:20000] + "\n\n[Content further truncated for smaller model]"
+                if len(prompt) > self.FALLBACK_MODEL_MAX_CHARS:
+                    prompt = (
+                        prompt[: self.FALLBACK_MODEL_MAX_CHARS]
+                        + "\n\n[Content further truncated for smaller model]"
+                    )
 
                 response = await self.client.chat.completions.create(
-                    model="llama3-8b-8192",  # Smaller model with better token limits
+                    model=self.fallback_model,  # Smaller model with better token limits
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=3000,
@@ -73,8 +81,11 @@ class GeminiProvider(LLMProvider):
         self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
     async def generate_content(self, prompt: str) -> str:
-        response = await self.model.generate_content_async(prompt)
-        return response.text
+        try:
+            response = await self.model.generate_content_async(prompt)
+            return response.text
+        except Exception as e:
+            raise RuntimeError(f"Error generating content with Gemini: {e}") from e
 
 
 class LLMService:
@@ -96,13 +107,7 @@ class LLMService:
         """Synchronous wrapper for LLM calls (for test compatibility)."""
         import asyncio
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        return loop.run_until_complete(self.generate_content(prompt, provider))
+        return asyncio.run(self.generate_content(prompt, provider))
 
     async def generate_content(self, prompt: str, provider: str = None) -> str:
         provider = provider or self.default_provider
@@ -114,7 +119,10 @@ class LLMService:
 
         # Generate new response
         llm_provider = self.get_provider(provider)
-        response = await llm_provider.generate_content(prompt)
+        try:
+            response = await llm_provider.generate_content(prompt)
+        except Exception as e:
+            raise RuntimeError(f"Error generating content with provider {provider}: {e}") from e
 
         # Cache the response
         await cache_service.set(prompt, provider, response)

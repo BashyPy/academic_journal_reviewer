@@ -11,36 +11,35 @@ class DocumentParser:
     def __init__(self):
         self.logger = get_logger()
 
+    def _read_pdf(self, file_content: bytes) -> PyPDF2.PdfReader:
+        if not isinstance(file_content, (bytes, bytearray)) or not file_content:
+            raise ValueError("Invalid or empty PDF content")
+        try:
+            return PyPDF2.PdfReader(io.BytesIO(file_content))
+        except Exception as e:
+            self.logger.exception("Failed to read PDF stream")
+            raise ValueError("Failed to read PDF file") from e
+
+    def _extract_text_from_pdf_pages(self, pdf_reader: PyPDF2.PdfReader) -> str:
+        text_parts = []
+        for i, page in enumerate(pdf_reader.pages):
+            try:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            except Exception as e:
+                self.logger.warning(f"Failed to extract text from page {i+1}: {e}")
+                continue
+        return "\n".join(text_parts).strip()
+
     def parse_pdf(self, file_content: bytes) -> Dict[str, Any]:
         try:
-            if not isinstance(file_content, (bytes, bytearray)) or not file_content:
-                raise ValueError("Invalid or empty PDF content")
-
-            try:
-                pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-            except Exception as e:
-                # Log and wrap low-level PDF read errors
-                self.logger.exception("Failed to read PDF stream")
-                raise ValueError("Failed to read PDF file") from e
-
-            num_pages = len(getattr(pdf_reader, "pages", []))
+            pdf_reader = self._read_pdf(file_content)
+            num_pages = len(pdf_reader.pages)
             if num_pages == 0:
                 raise ValueError("PDF contains no pages")
 
-            # Use list accumulation for better performance than repeated string concatenation
-            text_parts = []
-            for i, page in enumerate(pdf_reader.pages):
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(page_text)
-                except Exception as e:
-                    # Non-fatal per-page extraction failures should be logged and skipped
-                    self.logger.warning(f"Failed to extract text from page {i+1}: {e}")
-                    continue
-
-            text = "\n".join(text_parts).strip()
-
+            text = self._extract_text_from_pdf_pages(pdf_reader)
             if not text:
                 raise ValueError("No text could be extracted from PDF")
 
@@ -49,10 +48,8 @@ class DocumentParser:
                 "metadata": {"pages": num_pages, "file_type": "pdf"},
             }
         except ValueError:
-            # ValueErrors are expected validation/parsing errors — already logged where appropriate
             raise
         except Exception as e:
-            # Catch-all for unexpected errors: log with traceback and preserve context
             self.logger.exception("Unexpected error while parsing PDF")
             raise ValueError(f"Failed to parse PDF: {e}") from e
 
@@ -78,8 +75,8 @@ class DocumentParser:
                 "metadata": {"paragraphs": len(paragraphs), "file_type": "docx"},
             }
         except Exception as e:
-            self.logger.error(e, additional_info={"parser_type": "docx"})
-            raise ValueError(f"Failed to parse DOCX: {str(e)}")
+            self.logger.exception("Unexpected error while parsing DOCX")
+            raise ValueError(f"Failed to parse DOCX: {e}") from e
 
     def parse_document(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         try:

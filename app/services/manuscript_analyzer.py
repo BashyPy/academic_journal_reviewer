@@ -23,7 +23,7 @@ class ManuscriptAnalyzer:
                 compiled = re.compile(pattern)
                 self.compiled_section_patterns.append((name, compiled))
             except re.error as e:
-                logger.warning("Invalid regex pattern in section_patterns: %s (%s)", pattern, e)
+                logger.warning(f"Invalid regex pattern in section_patterns: {pattern} ({str(e)})")
 
     def _detect_section_header(self, stripped: str) -> Optional[str]:
         """Return the section name if the stripped line matches a header, otherwise None."""
@@ -66,21 +66,26 @@ class ManuscriptAnalyzer:
             sections[current_section]["content"].append((line_num, stripped))
             sections[current_section]["word_count"] += len(stripped.split())
 
-        return sections
+            # Track min and max line numbers for each section for efficient lookup
+            if "min_line" not in sections[current_section]:
+                sections[current_section]["min_line"] = line_num
+                sections[current_section]["max_line"] = line_num
+            else:
+                sections[current_section]["min_line"] = min(
+                    sections[current_section]["min_line"], line_num
+                )
+                sections[current_section]["max_line"] = max(
+                    sections[current_section]["max_line"], line_num
+                )
 
-    def find_line_number(self, content: str, text: str) -> Optional[int]:
-        """Find line number for specific text."""
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            if text.lower() in line.lower():
-                return i + 1
-        return None
+        return sections
 
     def get_section_for_line(self, sections: Dict, line_num: int) -> str:
         """Determine which section a line belongs to."""
         for section_name, section_data in sections.items():
-            section_lines = [line[0] for line in section_data["content"]]
-            if section_lines and min(section_lines) <= line_num <= max(section_lines):
+            min_line = section_data.get("min_line")
+            max_line = section_data.get("max_line")
+            if min_line is not None and max_line is not None and min_line <= line_num <= max_line:
                 return section_name
         return "unknown"
 

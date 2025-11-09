@@ -29,28 +29,46 @@ class Settings:  # pylint: disable=too-many-instance-attributes,too-few-public-m
                 os.getenv("MONGODB_DATABASE", "aaris")
             )
 
-        self.DEFAULT_LLM = self._validate_llm_provider(
-            os.getenv("DEFAULT_LLM", "groq")
-        )  # pylint: disable=invalid-name
-        self.GROQ_API_KEY = self._validate_api_key(
-            os.getenv("GROQ_API_KEY")
-        )  # pylint: disable=invalid-name
-        self.OPENAI_API_KEY = self._validate_api_key(
-            os.getenv("OPENAI_API_KEY")
-        )  # pylint: disable=invalid-name
-        self.GEMINI_API_KEY = self._validate_api_key(
-            os.getenv("GEMINI_API_KEY")
-        )  # pylint: disable=invalid-name
-        self.ANTHROPIC_API_KEY = self._validate_api_key(
-            os.getenv("ANTHROPIC_API_KEY")
-        )  # pylint: disable=invalid-name
+        try:
+            self.DEFAULT_LLM = self._validate_llm_provider(
+                os.getenv("DEFAULT_LLM", "groq")
+            )  # pylint: disable=invalid-name
+            self.GROQ_API_KEY = self._validate_api_key(
+                os.getenv("GROQ_API_KEY")
+            )  # pylint: disable=invalid-name
+            self.OPENAI_API_KEY = self._validate_api_key(
+                os.getenv("OPENAI_API_KEY")
+            )  # pylint: disable=invalid-name
+            self.GEMINI_API_KEY = self._validate_api_key(
+                os.getenv("GEMINI_API_KEY")
+            )  # pylint: disable=invalid-name
+            self.ANTHROPIC_API_KEY = self._validate_api_key(
+                os.getenv("ANTHROPIC_API_KEY")
+            )  # pylint: disable=invalid-name
 
-        self.APP_ID = self._validate_app_id(
-            os.getenv("APP_ID", "aaris-app")
-        )  # pylint: disable=invalid-name
-        self.JWT_SECRET = os.getenv(  # pylint: disable=invalid-name
-            "JWT_SECRET", "change-this-secret-in-production-use-strong-random-key"
-        )
+            self.APP_ID = self._validate_app_id(
+                os.getenv("APP_ID", "aaris-app")
+            )  # pylint: disable=invalid-name
+            jwt_secret = os.getenv(
+                "JWT_SECRET", "change-this-secret-in-production-use-strong-random-key"
+            )
+            if len(jwt_secret) < 32:
+                logger.warning(
+                    "JWT_SECRET is too short. Use at least 32 characters for production."
+                )
+            if jwt_secret == "change-this-secret-in-production-use-strong-random-key":
+                logger.warning("Using default JWT_SECRET. Change this in production!")
+            self.JWT_SECRET = jwt_secret  # pylint: disable=invalid-name
+        except (ValueError, TypeError) as e:
+            logger.error("Error processing environment variables: %s", e)
+            # Set safe defaults or re-raise as appropriate
+            self.DEFAULT_LLM = "groq"
+            self.GROQ_API_KEY = None
+            self.OPENAI_API_KEY = None
+            self.GEMINI_API_KEY = None
+            self.ANTHROPIC_API_KEY = None
+            self.APP_ID = "aaris-app"
+            self.JWT_SECRET = "change-this-secret-in-production-use-strong-random-key"
 
     def _validate_mongodb_url(self, url: Optional[str]) -> str:
         """Validate MongoDB URL format with defensive error handling"""
@@ -139,11 +157,11 @@ class Settings:  # pylint: disable=too-many-instance-attributes,too-few-public-m
                 return "aaris-app"
 
             return safe_id
-        except re.error:
-            logger.exception("Regex error validating APP_ID, falling back to 'aaris-app'.")
+        except re.error as e:
+            logger.error("Regex error validating APP_ID: %s. Falling back to 'aaris-app'.", e)
             return "aaris-app"
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("Unexpected error validating APP_ID, falling back to 'aaris-app'.")
+        except TypeError as e:
+            logger.error("Type error validating APP_ID: %s. Falling back to 'aaris-app'.", e)
             return "aaris-app"
 
     def get_jwt_secret(self) -> str:

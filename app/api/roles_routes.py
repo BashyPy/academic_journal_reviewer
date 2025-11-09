@@ -1,6 +1,6 @@
 """Role management routes"""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.middleware.permissions import require_permission
 from app.models.roles import (
@@ -33,7 +33,7 @@ async def list_roles():
 async def get_role_info(role: str):
     """Get information about a specific role"""
     if role not in get_available_roles():
-        return {"error": "Role not found"}
+        raise HTTPException(status_code=404, detail="Role not found")
 
     return {
         "role": role,

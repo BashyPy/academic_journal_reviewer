@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -22,6 +23,26 @@ router = APIRouter(prefix="/editor", tags=["editor-dashboard"])
 logger = get_logger(__name__)
 
 
+def _process_submission(submission: dict) -> dict:
+    """Process submission for API response."""
+    submission["_id"] = str(submission["_id"])
+    if "file_metadata" in submission and "file_data" in submission["file_metadata"]:
+        del submission["file_metadata"]["file_data"]
+    return submission
+
+
+# MongoDB aggregation pipeline stages
+MONGO_GROUP = "$group"
+MONGO_MATCH = "$match"
+MONGO_COUNT = "$count"
+MONGO_SORT = "$sort"
+MONGO_LIMIT = "$limit"
+MONGO_PROJECT = "$project"
+MONGO_FACET = "$facet"
+MONGO_SUM = "$sum"
+PROCESSING_TIME = "processing_time"
+
+
 def require_editor(user: dict = Depends(get_current_user)):
     """Require editor role or higher"""
     role = user.get("role")
@@ -30,27 +51,66 @@ def require_editor(user: dict = Depends(get_current_user)):
         UserRole.ADMIN.value,
         UserRole.SUPER_ADMIN.value,
     ]:
-        raise HTTPException(status_code=403, detail="Editor access required")
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to access this resource."
+        )
     return user
 
 
-@router.get("/dashboard/stats")
-async def get_editor_stats(_editor: dict = Depends(require_editor)):
-    """Get editor dashboard statistics"""
+@router.get("/stats")
+async def get_dashboard_stats(_editor: dict = Depends(require_editor)):
+    """Get dashboard stats"""
     db = await mongodb_service.get_database()
+    now = datetime.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = now - timedelta(days=7)
+
+    pipeline = [
+        {
+            "$facet": {
+                "total_submissions": [{MONGO_COUNT: "count"}],
+                "pending_review": [{MONGO_MATCH: {"status": "pending"}}, {MONGO_COUNT: "count"}],
+                "in_review": [{MONGO_MATCH: {"status": "processing"}}, {MONGO_COUNT: "count"}],
+                "completed": [{MONGO_MATCH: {"status": "completed"}}, {MONGO_COUNT: "count"}],
+                "failed": [{MONGO_MATCH: {"status": "failed"}}, {MONGO_COUNT: "count"}],
+                "today_submissions": [
+                    {MONGO_MATCH: {"created_at": {"$gte": today_start}}},
+                    {MONGO_COUNT: "count"},
+                ],
+                "this_week": [
+                    {MONGO_MATCH: {"created_at": {"$gte": week_start}}},
+                    {MONGO_COUNT: "count"},
+                ],
+            }
+        }
+    ]
+
+    result = await db.submissions.aggregate(pipeline).to_list(length=1)
+
+    if not result:
+        return {
+            "total_submissions": 0,
+            "pending_review": 0,
+            "in_review": 0,
+            "completed": 0,
+            "failed": 0,
+            "today_submissions": 0,
+            "this_week": 0,
+        }
+
+    counts = result[0]
+
+    def get_count(field):
+        return counts[field][0]["count"] if counts.get(field) and counts[field] else 0
 
     stats = {
-        "total_submissions": await db.submissions.count_documents({}),
-        "pending_review": await db.submissions.count_documents({"status": "pending"}),
-        "in_review": await db.submissions.count_documents({"status": "processing"}),
-        "completed": await db.submissions.count_documents({"status": "completed"}),
-        "failed": await db.submissions.count_documents({"status": "failed"}),
-        "today_submissions": await db.submissions.count_documents(
-            {"created_at": {"$gte": datetime.now().replace(hour=0, minute=0, second=0)}}
-        ),
-        "this_week": await db.submissions.count_documents(
-            {"created_at": {"$gte": datetime.now() - timedelta(days=7)}}
-        ),
+        "total_submissions": get_count("total_submissions"),
+        "pending_review": get_count("pending_review"),
+        "in_review": get_count("in_review"),
+        "completed": get_count("completed"),
+        "failed": get_count("failed"),
+        "today_submissions": get_count("today_submissions"),
+        "this_week": get_count("this_week"),
     }
 
     return stats
@@ -73,34 +133,34 @@ async def list_all_submissions(
     if domain:
         query["detected_domain"] = domain
 
+    total = await db.submissions.count_documents(query)
     submissions = (
-        await db.submissions.find(query, {"file_data": 0})
+        await db.submissions.find(query)
         .sort("created_at", -1)
         .skip(skip)
         .limit(limit)
         .to_list(length=limit)
     )
-    total = await db.submissions.count_documents(query)
 
-    for sub in submissions:
-        sub["_id"] = str(sub["_id"])
-        if "file_metadata" in sub and "file_data" in sub["file_metadata"]:
-            del sub["file_metadata"]["file_data"]
+    processed_submissions = [_process_submission(sub) for sub in submissions]
 
-    return {"submissions": submissions, "total": total, "skip": skip, "limit": limit}
+    return {"submissions": processed_submissions, "total": total}
 
 
 @router.get("/submissions/{submission_id}")
 async def get_submission_details(submission_id: str, _editor: dict = Depends(require_editor)):
     """Get detailed submission with review data"""
     db = await mongodb_service.get_database()
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)}, {"file_data": 0})
+    try:
+        obj_id = ObjectId(submission_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid submission ID format")
+
+    submission = await db.submissions.find_one({"_id": obj_id})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    submission["_id"] = str(submission["_id"])
-    if "file_metadata" in submission and "file_data" in submission["file_metadata"]:
-        del submission["file_metadata"]["file_data"]
+    submission = _process_submission(submission)
     tasks = await db.agent_tasks.find({"submission_id": submission_id}).to_list(length=100)
     for task in tasks:
         task["_id"] = str(task["_id"])
@@ -117,9 +177,10 @@ async def get_submission_details(submission_id: str, _editor: dict = Depends(req
 
 
 class EditorialDecision(BaseModel):
-    decision: str  # accept, reject, revise
-    comments: str
-    notify_author: bool = True
+    """Model for editorial decision"""
+
+    decision: str
+    comments: Optional[str] = None
 
 
 @router.post("/submissions/{submission_id}/decision")
@@ -132,7 +193,12 @@ async def make_editorial_decision(
     """Make editorial decision on submission"""
     db = await mongodb_service.get_database()
 
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
+    try:
+        obj_id = ObjectId(submission_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid submission ID format")
+
+    submission = await db.submissions.find_one({"_id": obj_id})
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
@@ -145,7 +211,7 @@ async def make_editorial_decision(
     }
 
     await db.submissions.update_one(
-        {"_id": ObjectId(submission_id)},
+        {"_id": obj_id},
         {"$set": {"editorial_decision": decision_data, "updated_at": datetime.now()}},
     )
 
@@ -162,43 +228,37 @@ async def make_editorial_decision(
 
 
 @router.get("/analytics/submissions")
-async def get_submission_analytics_route(
-    _editor: dict = Depends(require_editor),
-    days: int = Query(30, ge=1, le=365),
-):
-    """Get submission analytics over time"""
-    return await get_submission_analytics(days)
+async def get_submission_analytics_route(_editor: dict = Depends(require_editor)):
+    """Get submission analytics"""
+    return await get_submission_analytics()
 
 
-@router.get("/analytics/domains")
+@router.get("/analytics/domain-distribution")
 async def get_domain_distribution(_editor: dict = Depends(require_editor)):
     """Get domain distribution"""
     db = await mongodb_service.get_database()
-
     pipeline = [
-        {"$group": {"_id": "$detected_domain", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
+        {MONGO_GROUP: {"_id": "$detected_domain", "count": {"$sum": 1}}},
+        {MONGO_SORT: {"count": -1}},
         {"$limit": 20},
     ]
-
     results = await db.submissions.aggregate(pipeline).to_list(length=20)
-    return {"domains": results}
+    return results
 
 
 @router.get("/analytics/performance")
-async def get_review_performance(_editor: dict = Depends(require_editor)):
-    """Get review processing performance metrics"""
+async def get_performance_analytics(_editor: dict = Depends(require_editor)):
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {"$match": {"status": "completed", "completed_at": {"$exists": True}}},
-        {"$project": {"processing_time": {"$subtract": ["$completed_at", "$created_at"]}}},
+        {MONGO_MATCH: {"status": "completed", "completed_at": {"$exists": True}}},
+        {"$project": {PROCESSING_TIME: {"$subtract": ["$completed_at", "$created_at"]}}},
         {
-            "$group": {
+            MONGO_GROUP: {
                 "_id": None,
-                "avg_time_ms": {"$avg": "$processing_time"},
-                "min_time_ms": {"$min": "$processing_time"},
-                "max_time_ms": {"$max": "$processing_time"},
+                "avg_time_ms": {"$avg": f"${PROCESSING_TIME}"},
+                "min_time_ms": {"$min": f"${PROCESSING_TIME}"},
+                "max_time_ms": {"$max": f"${PROCESSING_TIME}"},
                 "total_reviews": {"$sum": 1},
             }
         },
@@ -215,7 +275,7 @@ async def get_review_performance(_editor: dict = Depends(require_editor)):
                 "max_time_ms": 0,
                 "total_reviews": 0,
             }
-        )
+        ),
     }
 
 
@@ -225,35 +285,31 @@ async def get_status_breakdown(_editor: dict = Depends(require_editor)):
     db = await mongodb_service.get_database()
 
     pipeline = [
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
+        {MONGO_GROUP: {"_id": "$status", "count": {"$sum": 1}}},
+        {MONGO_SORT: {"count": -1}},
     ]
 
     results = await db.submissions.aggregate(pipeline).to_list(length=10)
-    return {"status_breakdown": results}
+    return results
 
 
 @router.get("/recent-activity")
 async def get_recent_activity(
-    _editor: dict = Depends(require_editor),
-    limit: int = Query(20, ge=1, le=50),
+    _editor: dict = Depends(require_editor), limit: int = Query(10, ge=1, le=50)
 ):
     """Get recent editorial activity"""
     db = await mongodb_service.get_database()
 
     submissions = (
-        await db.submissions.find({}, {"file_data": 0})
-        .sort("updated_at", -1)
+        await db.submissions.find({"editorial_decision": {"$exists": True}})
+        .sort("editorial_decision.decided_at", -1)
         .limit(limit)
         .to_list(length=limit)
     )
 
-    for sub in submissions:
-        sub["_id"] = str(sub["_id"])
-        if "file_metadata" in sub and "file_data" in sub["file_metadata"]:
-            del sub["file_metadata"]["file_data"]
+    processed_submissions = [_process_submission(sub) for sub in submissions]
 
-    return {"recent_activity": submissions}
+    return {"recent_activity": processed_submissions}
 
 
 @router.post("/submissions/{submission_id}/reprocess")

@@ -11,7 +11,7 @@ graph TB
         A7[Performance Tab]
         A8[Activity Tab]
         A9[System Tab]
-        
+
         A --> A1
         A --> A2
         A --> A3
@@ -22,7 +22,7 @@ graph TB
         A --> A8
         A --> A9
     end
-    
+
     subgraph API["API Layer - FastAPI"]
         B[super_admin_routes.py]
         B1[Dashboard Stats]
@@ -32,7 +32,7 @@ graph TB
         B5[Analytics]
         B6[API Keys]
         B7[System Operations]
-        
+
         B --> B1
         B --> B2
         B --> B3
@@ -41,18 +41,18 @@ graph TB
         B --> B6
         B --> B7
     end
-    
+
     subgraph Auth["Authentication & Authorization"]
         C[require_super_admin]
         C1[JWT Validation]
         C2[Role Check]
         C3[Audit Logger]
-        
+
         C --> C1
         C --> C2
         C --> C3
     end
-    
+
     subgraph Database["Database - MongoDB"]
         D[(MongoDB)]
         D1[users]
@@ -60,27 +60,27 @@ graph TB
         D3[agent_tasks]
         D4[audit_logs]
         D5[api_keys]
-        
+
         D --> D1
         D --> D2
         D --> D3
         D --> D4
         D --> D5
     end
-    
+
     subgraph Services["Services"]
         E[mongodb_service]
         E1[audit_logger]
         E2[security_monitor]
         E3[cache_service]
         E4[user_service]
-        
+
         E --> E1
         E --> E2
         E --> E3
         E --> E4
     end
-    
+
     A1 --> B1
     A2 --> B2
     A3 --> B3
@@ -90,7 +90,7 @@ graph TB
     A7 --> B5
     A8 --> B5
     A9 --> B7
-    
+
     B1 --> C
     B2 --> C
     B3 --> C
@@ -98,9 +98,9 @@ graph TB
     B5 --> C
     B6 --> C
     B7 --> C
-    
+
     C --> E
-    
+
     B1 --> E
     B2 --> E4
     B3 --> E
@@ -108,13 +108,13 @@ graph TB
     B5 --> E
     B6 --> E
     B7 --> E3
-    
+
     E --> D
     E1 --> D4
     E2 --> D4
     E3 --> D
     E4 --> D1
-    
+
     style A fill:#61dafb,stroke:#333,stroke-width:2px
     style B fill:#009688,stroke:#333,stroke-width:2px
     style C fill:#ff9800,stroke:#333,stroke-width:2px

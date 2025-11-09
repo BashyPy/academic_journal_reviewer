@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from app.middleware.rate_limiter import rate_limiter
 from app.models.schemas import TaskStatus
@@ -52,7 +52,7 @@ class OrchestratorAgent:  # pylint: disable=too-few-public-methods
             # Resolve timezone from provided string, fallback to UTC on error
             try:
                 tz = ZoneInfo(timezone_str)
-            except (ZoneInfoNotFoundError, KeyError):
+            except KeyError:
                 tz = ZoneInfo("UTC")
 
             completed_at = datetime.now(tz)
@@ -67,17 +67,23 @@ class OrchestratorAgent:  # pylint: disable=too-few-public-methods
             )
 
             # Update document cache with completed results
-            await document_cache_service.cache_submission(
-                submission["content"],
-                {
-                    "_id": submission_id,
-                    "title": submission["title"],
-                    "status": TaskStatus.COMPLETED.value,
-                    "final_report": final_report,
-                    "completed_at": completed_at,
-                },
-                ttl_hours=168,  # Cache completed reviews for 7 days
-            )
+            try:
+                await document_cache_service.cache_submission(
+                    submission["content"],
+                    {
+                        "_id": submission_id,
+                        "title": submission["title"],
+                        "status": TaskStatus.COMPLETED.value,
+                        "final_report": final_report,
+                        "completed_at": completed_at,
+                    },
+                    ttl_hours=168,  # Cache completed reviews for 7 days
+                )
+            except Exception as cache_exc:
+                self.logger.warning(
+                    f"Failed to cache submission {submission_id}: {cache_exc}",
+                    additional_info={"submission_id": submission_id, "stage": "caching"},
+                )
 
             # Release processing slot
             rate_limiter.release_processing(client_ip, submission_id)
@@ -98,7 +104,7 @@ class OrchestratorAgent:  # pylint: disable=too-few-public-methods
             # Ensure a timezone-aware fallback for the failure timestamp as well
             try:
                 err_tz = ZoneInfo(timezone_str)
-            except (ZoneInfoNotFoundError, KeyError):
+            except KeyError:
                 err_tz = ZoneInfo("UTC")
 
             # Release processing slot on failure

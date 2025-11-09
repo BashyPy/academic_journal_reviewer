@@ -2,8 +2,22 @@ import html
 import re
 from typing import List, Tuple
 
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class TextAnalyzer:
+    @staticmethod
+    def find_line_number(full_text: str, target_text: str) -> int:
+        """Find line number of target text."""
+        if not full_text or not target_text:
+            return 0
+        start, _ = TextAnalyzer.find_text_position(full_text, target_text)
+        if start == -1:
+            return 0
+        return full_text[:start].count("\n") + 1
+
     @staticmethod
     def find_text_position(full_text: str, target_text: str) -> Tuple[int, int]:
         """Find start and end positions of target text in full_text.
@@ -26,10 +40,17 @@ class TextAnalyzer:
         # is for output contexts such as HTML)
         start = full_text.find(target_text)
         if start == -1:
-            # Try fuzzy matching for slight variations
-            start = TextAnalyzer._fuzzy_find(full_text, target_text)
+            # Try fuzzy matching for slight variations, but only on reasonably sized text
+            # to avoid performance issues on very large documents.
+            if len(full_text) < 500000:  # Limit fuzzy search to 500KB
+                try:
+                    start = TextAnalyzer._fuzzy_find(full_text, target_text)
+                    # Assuming logger is defined elsewhere, if not, this will need adjustment.
+                    # For now, we can remove the logging line if logger is not available.
+                except Exception:
+                    pass  # Ignore fuzzy find errors, start remains -1
 
-        if start != -1:
+        if start != -1 and target_text:
             return start, start + len(target_text)
         return -1, -1
 
@@ -53,7 +74,11 @@ class TextAnalyzer:
                 normalized_full = normalized_full[:100000]
 
             return normalized_full.find(normalized_target)
-        except re.error:
+        except re.error as e:
+            logger.error(f"Regex error during fuzzy find: {e}")
+            return -1
+        except Exception as e:
+            logger.error(f"Unexpected error during fuzzy find: {e}")
             return -1
 
     @staticmethod
@@ -78,23 +103,19 @@ class TextAnalyzer:
         context_start = max(0, start_pos - context_length)
         context_end = min(len(full_text), end_pos + context_length)
 
-        try:
-            context = full_text[context_start:context_end]
+        context = full_text[context_start:context_end]
 
-            # Escape HTML to prevent XSS in output contexts
-            context = html.escape(context)
+        # Escape HTML to prevent XSS in output contexts
+        context = html.escape(context)
 
-            # Add ellipsis if truncated
-            if context_start > 0:
-                context = "..." + context
-            if context_end < len(full_text):
-                context = context + "..."
+        # Add ellipsis if truncated
+        if context_start > 0:
+            context = "..." + context
+        if context_end < len(full_text):
+            context += "..."
 
-            return context
-        except (IndexError, MemoryError):
-            return ""
+        return context
 
-    @staticmethod
     @staticmethod
     def _is_valid_highlight_item(highlight: object) -> bool:
         return (
@@ -111,11 +132,8 @@ class TextAnalyzer:
             "end_pos": end,
             "context": TextAnalyzer.extract_context(full_text, start, end),
         }
-        for key, value in highlight.items():
-            if key in safe:
-                continue
-            if isinstance(value, (str, int, float, bool)):
-                safe[key] = html.escape(value) if isinstance(value, str) else value
+        # Only include explicitly defined fields to prevent information leaks.
+        # The previous implementation copied any extra fields of certain types.
         return safe
 
     @staticmethod
@@ -140,7 +158,8 @@ class TextAnalyzer:
 
             try:
                 start, end = TextAnalyzer.find_text_position(full_text, text)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Could not process highlight for text: '{text[:100]}'. Error: {e}")
                 continue
 
             if start == -1 or end == -1:

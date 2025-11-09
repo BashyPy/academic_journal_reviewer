@@ -22,25 +22,33 @@ class OTPCleanupService:
         """Remove expired OTPs from users table"""
         await self.initialize()
 
-        # Clear expired OTPs from regular users
-        result = await self.collection.update_many(
-            {"otp_expires_at": {"$lt": datetime.now()}},
-            {
-                "$unset": {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
-                "$set": {"updated_at": datetime.now()},
-            },
-        )
+        if self.collection is None:
+            logger.error("Database collection is not initialized.")
+            return 0
 
-        # Remove temporary user records created for email changes
-        temp_result = await self.collection.delete_many(
-            {"temporary": True, "created_at": {"$lt": datetime.now()}}
-        )
+        try:
+            # Clear expired OTPs from regular users
+            result = await self.collection.update_many(
+                {"otp_expires_at": {"$lt": datetime.now()}},
+                {
+                    "$unset": {"otp": "", "otp_purpose": "", "otp_expires_at": ""},
+                    "$set": {"updated_at": datetime.now()},
+                },
+            )
 
-        total_cleaned = result.modified_count + temp_result.deleted_count
-        if total_cleaned > 0:
-            logger.info(f"Cleaned up {total_cleaned} expired OTP records")
+            # Remove temporary user records created for email changes
+            temp_result = await self.collection.delete_many(
+                {"temporary": True, "created_at": {"$lt": datetime.now()}}
+            )
 
-        return total_cleaned
+            total_cleaned = result.modified_count + temp_result.deleted_count
+            if total_cleaned > 0:
+                logger.info(f"Cleaned up {total_cleaned} expired OTP records")
+
+            return total_cleaned
+        except Exception as e:
+            logger.error(f"An error occurred during OTP cleanup: {e}")
+            return 0
 
 
 otp_cleanup_service = OTPCleanupService()

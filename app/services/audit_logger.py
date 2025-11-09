@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from pymongo.errors import PyMongoError
+
 from app.services.mongodb_service import mongodb_service
 from app.utils.logger import get_logger
 
@@ -34,12 +36,11 @@ class AuditLogger:
                 "severity": severity,
                 "timestamp": datetime.now(),
             }
-
             await db.audit_logs.insert_one(audit_entry)
             logger.info(f"Audit event logged: {event_type}")
 
-        except Exception as e:
-            logger.error(f"Failed to log audit event: {e}")
+        except PyMongoError as e:
+            logger.error(f"Failed to log audit event to MongoDB: {e}")
 
     async def log_auth_attempt(
         self,

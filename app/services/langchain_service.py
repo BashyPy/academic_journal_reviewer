@@ -1,4 +1,5 @@
 import asyncio
+import html
 import json
 import textwrap
 from typing import Any, Collection, Dict, List, Optional, cast
@@ -11,6 +12,10 @@ except ImportError:
     # Fallback for newer LangChain versions
     class ConversationChain:  # pylint: disable=too-few-public-methods
         def __init__(self, llm, memory, verbose=False):  # pylint: disable=unused-argument
+            if llm is None:
+                raise ValueError("llm cannot be None")
+            if memory is None:
+                raise ValueError("memory cannot be None")
             self.llm = llm
             self.memory = memory
 
@@ -31,6 +36,8 @@ except ImportError:
     # Fallback for newer LangChain versions
     class LCConversationBufferWindowMemory:  # pylint: disable=too-few-public-methods
         def __init__(self, k=10, return_messages=True):
+            if not isinstance(k, int) or k < 0:
+                raise ValueError("k must be a non-negative integer.")
             self.k = k
             self.return_messages = return_messages
             self.messages = []
@@ -106,6 +113,16 @@ logger = get_logger(__name__)
 class LangChainService:
     def __init__(self):
         self.models = self._initialize_models()
+        self.rag_metrics = {
+            "total_requests": 0,
+            "successful_retrievals": 0,
+            "failed_retrievals": 0,
+            "empty_context_count": 0,
+            "total_docs_retrieved": 0,
+            "total_chars_retrieved": 0,
+            "cache_hits": 0,
+            "avg_retrieval_time_ms": 0.0,
+        }
 
         # Initialize embeddings with error handling; fall back to None if unavailable.
         try:
@@ -118,7 +135,10 @@ class LangChainService:
                     "available; embeddings disabled."
                 )
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error(e, {"component": "langchain_service", "function": "__init__"})
+            logger.error(
+                f"Failed to initialize embeddings: {e}",
+                {"component": "langchain_service", "function": "__init__"},
+            )
             self.embeddings = None
 
         # Initialize text splitter with fallback to a simple splitter.
@@ -131,10 +151,10 @@ class LangChainService:
                 )
             else:
                 raise ImportError("RecursiveCharacterTextSplitter not available")
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (ImportError, AttributeError) as e:
             logger.error(
-                Exception("Failed to initialize RecursiveCharacterTextSplitter"),
-                {"component": "langchain_service", "function": "__init__"},
+                f"Failed to initialize RecursiveCharacterTextSplitter: {e}",
+                additional_info={"component": "langchain_service", "function": "__init__"},
             )
 
             # Minimal fallback splitter compatible with create_documents
@@ -177,16 +197,20 @@ class LangChainService:
                 self.name = name
 
             async def ainvoke(self, *args, **kwargs):
-                raise RuntimeError(
+                await asyncio.sleep(0)  # Ensure it's a coroutine
+                error_message = (
                     f"LLM provider '{self.name}' is not initialized; "
                     f"set the appropriate API key or choose another provider."
                 )
+                logger.error(
+                    error_message, {"component": "langchain_service", "provider": self.name}
+                )
+                raise RuntimeError(error_message)
 
             async def apredict(self, *args, **kwargs):
-                raise RuntimeError(
-                    f"LLM provider '{self.name}' is not initialized; "
-                    f"set the appropriate API key or choose another provider."
-                )
+                # This method is for older LangChain compatibility.
+                # It calls ainvoke to avoid code duplication.
+                return await self.ainvoke(*args, **kwargs)
 
         # Provider specifications
         provider_specs = [
@@ -244,12 +268,13 @@ class LangChainService:
                     # Filter out None values
                     init_kwargs = {k: v for k, v in kwargs.items() if v is not None}
                     models[key] = client_cls(**init_kwargs)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(
-                    Exception(f"Failed to initialize {key.capitalize()}"),
+                    f"Failed to initialize {key.capitalize()}: {e}",
                     {
                         "component": "langchain_service",
                         "function": "_initialize_models",
+                        "provider": key,
                     },
                 )
 
@@ -335,9 +360,7 @@ class LangChainService:
                     "Evaluate medical literature: systematic reviews, "
                     "clinical guidelines, evidence hierarchy"
                 ),
-                "ethics": (
-                    "Assess medical ethics: informed consent, patient safety, " "data privacy"
-                ),
+                "ethics": ("Assess medical ethics: informed consent, patient safety, data privacy"),
                 "clarity": (
                     "Review medical clarity: terminology, clinical "
                     "significance, statistical reporting"
@@ -357,18 +380,18 @@ class LangChainService:
                     "prevention, debriefing"
                 ),
                 "clarity": (
-                    "Review psychology clarity: operational definitions, " "statistical reporting"
+                    "Review psychology clarity: operational definitions, statistical reporting"
                 ),
             },
             "computer_science": {
                 "methodology": (
-                    "Analyze CS methodology: algorithm complexity, " "benchmarking, reproducibility"
+                    "Analyze CS methodology: algorithm complexity, benchmarking, reproducibility"
                 ),
                 "literature": (
-                    "Evaluate CS literature: state-of-art comparisons, " "technical novelty"
+                    "Evaluate CS literature: state-of-art comparisons, technical novelty"
                 ),
-                "ethics": ("Assess CS ethics: data privacy, algorithmic bias, " "transparency"),
-                "clarity": ("Review CS clarity: code documentation, implementation " "details"),
+                "ethics": ("Assess CS ethics: data privacy, algorithmic bias, transparency"),
+                "clarity": ("Review CS clarity: code documentation, implementation details"),
             },
             "biology": {
                 "methodology": (
@@ -376,11 +399,11 @@ class LangChainService:
                     "controls, statistical analysis"
                 ),
                 "literature": (
-                    "Evaluate biology literature: evolutionary context, " "molecular mechanisms"
+                    "Evaluate biology literature: evolutionary context, molecular mechanisms"
                 ),
-                "ethics": ("Assess biological ethics: animal welfare, environmental " "impact"),
+                "ethics": ("Assess biological ethics: animal welfare, environmental impact"),
                 "clarity": (
-                    "Review biology clarity: species identification, " "methodology description"
+                    "Review biology clarity: species identification, methodology description"
                 ),
             },
             "physics": {
@@ -392,41 +415,33 @@ class LangChainService:
                     "Evaluate physics literature: theoretical foundations, "
                     "experimental validation"
                 ),
-                "ethics": (
-                    "Assess physics ethics: safety protocols, environmental " "considerations"
-                ),
-                "clarity": ("Review physics clarity: mathematical notation, unit " "consistency"),
+                "ethics": ("Assess physics ethics: safety protocols, environmental considerations"),
+                "clarity": ("Review physics clarity: mathematical notation, unit consistency"),
             },
             "mathematics": {
-                "methodology": (
-                    "Analyze mathematical methodology: proof rigor, logical " "structure"
-                ),
+                "methodology": ("Analyze mathematical methodology: proof rigor, logical structure"),
                 "literature": (
-                    "Evaluate mathematics literature: theorem citations, " "mathematical context"
+                    "Evaluate mathematics literature: theorem citations, mathematical context"
                 ),
                 "ethics": "Assess mathematical ethics: attribution, originality",
-                "clarity": ("Review mathematics clarity: proof structure, notation " "consistency"),
+                "clarity": ("Review mathematics clarity: proof structure, notation consistency"),
             },
             "economics": {
                 "methodology": (
-                    "Analyze economic methodology: econometric models, causal " "inference"
+                    "Analyze economic methodology: econometric models, causal inference"
                 ),
                 "literature": (
-                    "Evaluate economics literature: economic theory, empirical " "evidence"
+                    "Evaluate economics literature: economic theory, empirical evidence"
                 ),
-                "ethics": ("Assess economic ethics: data sources, conflicts of " "interest"),
-                "clarity": (
-                    "Review economics clarity: model specification, variable " "definitions"
-                ),
+                "ethics": ("Assess economic ethics: data sources, conflicts of interest"),
+                "clarity": ("Review economics clarity: model specification, variable definitions"),
             },
             "law": {
                 "methodology": (
-                    "Analyze legal methodology: case law analysis, statutory " "interpretation"
+                    "Analyze legal methodology: case law analysis, statutory interpretation"
                 ),
-                "literature": (
-                    "Evaluate legal literature: precedent analysis, legal " "scholarship"
-                ),
-                "ethics": ("Assess legal ethics: bias disclosure, conflict of " "interest"),
+                "literature": ("Evaluate legal literature: precedent analysis, legal scholarship"),
+                "ethics": ("Assess legal ethics: bias disclosure, conflict of interest"),
                 "clarity": ("Review legal clarity: argument structure, legal reasoning"),
             },
             "statistics": {
@@ -438,21 +453,19 @@ class LangChainService:
                     "Evaluate statistics literature: method comparisons, "
                     "theoretical developments"
                 ),
-                "ethics": ("Assess statistical ethics: data integrity, multiple " "testing"),
-                "clarity": (
-                    "Review statistics clarity: notation, interpretation, " "visualization"
-                ),
+                "ethics": ("Assess statistical ethics: data integrity, multiple testing"),
+                "clarity": ("Review statistics clarity: notation, interpretation, visualization"),
             },
             "bioinformatics": {
                 "methodology": (
-                    "Analyze bioinformatics methodology: algorithm validation, " "pipeline design"
+                    "Analyze bioinformatics methodology: algorithm validation, pipeline design"
                 ),
                 "literature": (
-                    "Evaluate bioinformatics literature: tool comparisons, " "benchmarking"
+                    "Evaluate bioinformatics literature: tool comparisons, benchmarking"
                 ),
-                "ethics": ("Assess bioinformatics ethics: data sharing, privacy " "protection"),
+                "ethics": ("Assess bioinformatics ethics: data sharing, privacy protection"),
                 "clarity": (
-                    "Review bioinformatics clarity: code availability, " "workflow documentation"
+                    "Review bioinformatics clarity: code availability, workflow documentation"
                 ),
             },
         }
@@ -462,6 +475,43 @@ class LangChainService:
         if not self.embeddings or not self.vector_store:
             logger.info("Embeddings or vector store not available, skipping embedding creation")
             return []
+
+        # Validate and sanitize content
+        try:
+            from app.services.vector_security_service import vector_security_service
+
+            validation = vector_security_service.validate_content(content)
+            if not validation["valid"]:
+                logger.warning(f"Content validation issues: {validation['issues']}")
+                # Sanitize if needed
+                if validation["sanitized"]:
+                    content = vector_security_service.sanitize_content(content)
+                    logger.info("Content sanitized before embedding")
+
+            # Add user isolation if user_id in metadata
+            if "user_id" in metadata:
+                metadata = vector_security_service.add_user_isolation(metadata, metadata["user_id"])
+        except Exception as e:
+            logger.error(f"Security validation failed: {e}")
+            # Continue with embedding but log the issue
+
+        # Check cache first
+        try:
+            from app.services.embedding_cache_service import embedding_cache_service
+
+            cached_ids = await embedding_cache_service.get_cached_embeddings(content)
+            if cached_ids:
+                logger.info(f"Using cached embeddings: {len(cached_ids)} chunks")
+                return cached_ids
+        except Exception as e:
+            logger.warning(
+                f"Cache check failed, proceeding with fresh embeddings: {e}",
+                {
+                    "component": "langchain_service",
+                    "function": "create_document_embeddings",
+                },
+            )
+            # Continue with fresh embeddings if cache fails
 
         try:
             # Truncate content if too long to avoid memory issues
@@ -486,10 +536,19 @@ class LangChainService:
                 self.vector_store.aadd_documents(documents), timeout=30.0
             )
             # Handle different return types from vector store
-            if isinstance(result, list):
-                return result
-            # Return document count as fallback
-            return [str(i) for i in range(len(documents))]
+            embedding_ids = (
+                result if isinstance(result, list) else [str(i) for i in range(len(documents))]
+            )
+
+            # Cache the embeddings
+            try:
+                from app.services.embedding_cache_service import embedding_cache_service
+
+                await embedding_cache_service.cache_embeddings(content, embedding_ids, metadata)
+            except Exception:
+                pass  # Non-fatal if caching fails
+
+            return embedding_ids
         except asyncio.TimeoutError:
             logger.error(
                 Exception("Embedding creation timed out"),
@@ -535,19 +594,73 @@ class LangChainService:
 
     async def _get_rag_context(self, prompt: str) -> str:
         """Retrieve relevant RAG context via semantic search."""
+        self.rag_metrics["total_requests"] += 1
+
         try:
             relevant_docs = await self.semantic_search(prompt)
-            return "\n\n".join(
-                [getattr(doc, "page_content", str(doc)) for doc in relevant_docs[:3]]
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
+
+            if not relevant_docs:
+                self.rag_metrics["empty_context_count"] += 1
+                logger.warning(
+                    "RAG context retrieval returned no results",
+                    additional_info={"prompt_length": len(prompt), "metrics": self.rag_metrics},
+                )
+                return ""
+
+            try:
+                context = "\n\n".join(
+                    [getattr(doc, "page_content", str(doc)) for doc in relevant_docs[:3]]
+                )
+
+                if context:
+                    self.rag_metrics["successful_retrievals"] += 1
+                    self.rag_metrics["total_docs_retrieved"] += len(relevant_docs)
+                    self.rag_metrics["total_chars_retrieved"] += len(context)
+                    logger.info(
+                        f"RAG context retrieved: {len(relevant_docs)} docs, "
+                        f"{len(context)} chars"
+                    )
+                else:
+                    self.rag_metrics["empty_context_count"] += 1
+                    logger.warning("RAG context empty despite documents found")
+
+                return context
+            except Exception as e:
+                self.rag_metrics["failed_retrievals"] += 1
+                logger.error(
+                    f"Failed to process relevant docs into context: {e}",
+                    {
+                        "component": "langchain_service",
+                        "function": "_get_rag_context",
+                    },
+                )
+                return ""
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.rag_metrics["failed_retrievals"] += 1
             logger.error(
-                Exception("_get_rag_context failed"),
+                Exception(f"_get_rag_context failed: {str(e)}"),
                 {
                     "component": "langchain_service",
                     "function": "_get_rag_context",
+                    "metrics": self.rag_metrics,
                 },
             )
+
+            # Alert on repeated failures
+            failure_rate = self.rag_metrics["failed_retrievals"] / max(
+                self.rag_metrics["total_requests"], 1
+            )
+            if failure_rate > 0.5 and self.rag_metrics["total_requests"] >= 10:
+                logger.error(
+                    Exception(
+                        f"HIGH RAG FAILURE RATE: {failure_rate:.1%} "
+                        f"({self.rag_metrics['failed_retrievals']}/"
+                        f"{self.rag_metrics['total_requests']})"
+                    ),
+                    {"component": "langchain_service", "alert": "rag_failure_rate"},
+                )
+
             return ""
 
     async def semantic_search(self, query: str, k: int = 5) -> List[Document]:
@@ -594,7 +707,7 @@ class LangChainService:
             if hasattr(self.vector_store, "similarity_search"):
                 import concurrent.futures  # pylint: disable=import-outside-toplevel
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     result = await loop.run_in_executor(
                         executor,
@@ -644,7 +757,15 @@ class LangChainService:
                     return json.dumps(response)
                 return str(response)
 
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    f"LangChain model invocation failed, falling back to basic LLM service: {e}",
+                    {
+                        "component": "langchain_service",
+                        "function": "_invoke_model",
+                        "provider": provider,
+                    },
+                )
                 # Fallback to basic LLM service
                 return await llm_service.generate_content(enhanced_prompt, provider)
 
@@ -695,7 +816,9 @@ class LangChainService:
                         "function": "invoke_with_rag",
                     },
                 )
-                return f"Error: Model invocation failed for provider '{provider}'"
+
+                safe_provider = html.escape(str(provider))
+                return f"Error: Model invocation failed for provider '{safe_provider}'"
 
             # Best-effort cache store
             try:
@@ -721,49 +844,78 @@ class LangChainService:
             )
             return "Error: Unexpected failure"
 
-    async def multi_model_consensus(
-        self, prompt: str, context: Dict[str, Any] = None, models: List[str] = None
-    ) -> str:
-        """Get consensus from multiple models for critical decisions."""
-        models = models or ["groq"]
+    def _get_consensus_models(self, models: Optional[List[str]]) -> List[str]:
+        """Select models for consensus, with a fallback to default."""
+        if models:
+            return models
 
-        # Enhance prompt with requirements for detailed analysis
-        enhanced_prompt = f"""
-{prompt}
+        available_models = [
+            model_name
+            for model_name in ["groq", "openai", "anthropic", "gemini"]
+            if model_name in self.models
+        ]
 
-IMPORTANT ANALYSIS REQUIREMENTS:
-- Provide comprehensive, detailed findings
-- Quote exact text from manuscript for each issue
-- Reference specific sections and line numbers
-- Classify severity (major/moderate/minor) for each finding
-- Give concrete, actionable recommendations
-- Include confidence level (0-1) in assessment
-- Confirm objective, unbiased analysis
-- Maintain professional academic tone
+        return available_models[:3] if len(available_models) >= 2 else available_models[:1]
 
-Ensure thorough coverage of all critical aspects with specific evidence.
-"""
-
-        # Try each model until one succeeds
+    async def _collect_model_responses(
+        self, prompt: str, context: Dict[str, Any], models: List[str]
+    ) -> List[Dict[str, str]]:
+        """Collect responses from multiple models concurrently."""
+        responses = []
         for model in models:
             try:
-                response = await self.invoke_with_rag(
-                    enhanced_prompt, model, context, use_memory=False
-                )
+                response = await self.invoke_with_rag(prompt, model, context, use_memory=False)
                 if not response.startswith("Error:"):
-                    return response
-            except Exception:  # pylint: disable=broad-exception-caught
+                    responses.append({"model": model, "response": response})
+                    logger.info(f"Consensus response from {model}: {len(response)} chars")
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(
-                    Exception(f"multi_model_consensus error for model '{model}'"),
+                    f"multi_model_consensus error for model '{model}': {e}",
                     {
                         "component": "langchain_service",
                         "function": "multi_model_consensus",
                     },
                 )
-                continue
+        return responses
 
-        # If all models fail, return a basic response
-        return "Multi-model consensus failed. " "Using single model fallback for ethics review."
+    async def multi_model_consensus(
+        self, prompt: str, context: Dict[str, Any] = None, models: List[str] = None
+    ) -> str:
+        """Get consensus from multiple models for critical decisions."""
+        selected_models = self._get_consensus_models(models)
+
+        if not selected_models:
+            logger.error(
+                "No models available for consensus",
+                {"component": "langchain_service", "function": "multi_model_consensus"},
+            )
+            return "Error: No LLM models available for consensus."
+
+        logger.info(f"Multi-model consensus using: {selected_models}")
+        responses = await self._collect_model_responses(prompt, context, selected_models)
+
+        if not responses:
+            return "Multi-model consensus failed: all models unavailable."
+
+        if len(responses) == 1:
+            logger.warning(f"Single model consensus (only {responses[0]['model']} succeeded)")
+            return responses[0]["response"]
+
+        logger.info(f"True consensus achieved with {len(responses)} models")
+        newline = "\n"
+        consensus_prompt = f"""
+Multiple AI models analyzed this content. Synthesize their responses into one coherent review:
+
+{newline.join([f"Model {i+1} ({r['model']}):{newline}{r['response'][:2000]}{newline}" for i, r in enumerate(responses)])}
+
+Provide a synthesized review that captures the consensus and highlights any disagreements.
+"""
+        try:
+            return await self.invoke_with_rag(
+                consensus_prompt, responses[0]["model"], context, use_memory=False
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            return responses[0]["response"]
 
     async def domain_aware_review(
         self,
@@ -801,28 +953,6 @@ Ensure thorough coverage of all critical aspects with specific evidence.
 
             Content:
             {truncated_content}
-
-            Provide DETAILED structured analysis with:
-            1. Score (0-10) with clear justification
-            2. Strengths (3-5 specific points with evidence)
-            3. Weaknesses (3-5 specific points with quoted text)
-            4. Detailed findings with:
-               - Exact quoted text from manuscript
-               - Section and line references
-               - Severity classification (major/moderate/minor)
-               - Specific improvement recommendations
-            5. Critical issues requiring immediate attention
-            6. Confidence level (0-1) in assessment
-            7. Bias check confirmation
-
-            IMPORTANT:
-            - Quote exact text for each finding
-            - Reference specific sections and line numbers
-            - Provide actionable, concrete recommendations
-            - Consider domain-specific standards and conventions
-            - Ensure professional academic tone
-
-            Format response with clear sections and detailed evidence.
             """
             ).strip()
 
@@ -830,15 +960,28 @@ Ensure thorough coverage of all critical aspects with specific evidence.
             response = await self.invoke_with_rag(full_prompt, context=context, use_memory=False)
             return response
 
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (TypeError, AttributeError) as e:
             logger.error(
-                Exception("domain_aware_review failed"),
+                f"domain_aware_review failed due to invalid input: {e}",
                 {
                     "component": "langchain_service",
                     "function": "domain_aware_review",
+                    "domain": domain,
+                    "review_type": review_type,
                 },
             )
-            return "Error: domain_aware_review failed"
+            return f"Error: Invalid input for domain-aware review - {e}"
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(
+                f"domain_aware_review failed: {e}",
+                {
+                    "component": "langchain_service",
+                    "function": "domain_aware_review",
+                    "domain": domain,
+                    "review_type": review_type,
+                },
+            )
+            return f"Error: domain_aware_review failed - {e}"
 
     async def chain_of_thought_analysis(self, prompt: str, context: Dict[str, Any] = None) -> str:
         """Perform step-by-step chain-of-thought analysis."""
@@ -852,26 +995,6 @@ Ensure thorough coverage of all critical aspects with specific evidence.
         Analyze this step-by-step using chain-of-thought reasoning:
 
         {prompt}
-
-        Please think through this systematically:
-        1. First, identify the key components to analyze
-        2. Then, examine each component in detail with specific evidence:
-           - Quote exact text from the manuscript
-           - Reference section and line numbers
-           - Identify specific issues or strengths
-        3. Consider the relationships between components
-        4. Evaluate strengths and weaknesses with concrete examples
-        5. Synthesize findings into actionable insights with:
-           - Severity classification (major/moderate/minor)
-           - Specific recommendations for improvement
-           - Confidence level in assessment
-
-        CRITICAL REQUIREMENTS:
-        - Provide detailed evidence for each finding
-        - Quote exact text where issues occur
-        - Give specific, actionable recommendations
-        - Maintain professional academic tone
-        - Show clear reasoning at each step
         """
 
         return await self.invoke_with_rag(cot_prompt, context=context)
@@ -932,7 +1055,23 @@ Ensure thorough coverage of all critical aspects with specific evidence.
             "provider": provider,
             "context": context,
         }
-        return hashlib.sha256(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
+        try:
+            # Use default=str to handle non-serializable types gracefully
+            encoded_data = json.dumps(key_data, sort_keys=True, default=str).encode()
+            return hashlib.sha256(encoded_data).hexdigest()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(
+                f"Failed to generate cache key due to a serialization error: {e}",
+                {
+                    "component": "langchain_service",
+                    "function": "_generate_cache_key",
+                },
+            )
+            # Fallback to a key without context if serialization fails
+            fallback_key_data = {"prompt": prompt[:500], "provider": provider}
+            return hashlib.sha256(
+                json.dumps(fallback_key_data, sort_keys=True).encode()
+            ).hexdigest()
 
     async def _cache_response(self, cache_key: str, provider: str, response: str) -> None:
         """Cache the response using the cache service."""
@@ -946,6 +1085,34 @@ Ensure thorough coverage of all critical aspects with specific evidence.
                     "function": "_cache_response",
                 },
             )
+
+    def get_rag_metrics(self) -> dict:
+        """Get RAG effectiveness metrics."""
+        try:
+            total = self.rag_metrics.get("total_requests", 0)
+            successful_retrievals = self.rag_metrics.get("successful_retrievals", 0)
+
+            # Avoid division by zero
+            total_for_rate = max(total, 1)
+            successful_for_avg = max(successful_retrievals, 1)
+
+            return {
+                **self.rag_metrics,
+                "success_rate": successful_retrievals / total_for_rate,
+                "failure_rate": self.rag_metrics.get("failed_retrievals", 0) / total_for_rate,
+                "empty_rate": self.rag_metrics.get("empty_context_count", 0) / total_for_rate,
+                "avg_docs_per_retrieval": self.rag_metrics.get("total_docs_retrieved", 0)
+                / successful_for_avg,
+                "avg_chars_per_retrieval": self.rag_metrics.get("total_chars_retrieved", 0)
+                / successful_for_avg,
+                "cache_hit_rate": self.rag_metrics.get("cache_hits", 0) / total_for_rate,
+            }
+        except (KeyError, TypeError, ZeroDivisionError) as e:
+            logger.error(
+                f"Failed to calculate RAG metrics: {e}",
+                {"component": "langchain_service", "function": "get_rag_metrics"},
+            )
+            return {"error": str(e), **self.rag_metrics}
 
     def cleanup_memory(self):
         """Clean up conversation memory."""

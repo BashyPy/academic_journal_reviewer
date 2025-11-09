@@ -81,10 +81,10 @@ class AuthService {
   }
 
   async resetPassword(email, otp, newPassword) {
-    const response = await axios.post('/api/v1/auth/reset-password', { 
-      email, 
-      otp, 
-      new_password: newPassword 
+    const response = await axios.post('/api/v1/auth/reset-password', {
+      email,
+      otp,
+      new_password: newPassword
     });
     return response.data;
   }
@@ -102,7 +102,7 @@ class AuthService {
   }
 
   async updateProfile(name) {
-    const response = await axios.put('/api/v1/auth/profile', 
+    const response = await axios.put('/api/v1/auth/profile',
       { name },
       { headers: { 'X-API-Key': this.getApiKey() } }
     );

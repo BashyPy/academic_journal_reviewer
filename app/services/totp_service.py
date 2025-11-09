@@ -12,7 +12,8 @@ class TOTPService:
 
     def get_totp_uri(self, email: str, secret: str, issuer: str = "AARIS") -> str:
         """Generate TOTP provisioning URI for QR code."""
-        return pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer)
+        totp = pyotp.totp.TOTP(secret)
+        return totp.provisioning_uri(name=email, issuer_name=issuer)
 
     def generate_qr_code(self, uri: str) -> str:
         """Generate QR code image as base64 string."""
@@ -22,14 +23,17 @@ class TOTPService:
         img = qr.make_image(fill_color="black", back_color="white")
 
         buffer = BytesIO()
-        img.save(buffer, format="PNG")
+        img.save(buffer)
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode()
 
     def verify_code(self, secret: str, code: str) -> bool:
         """Verify TOTP code."""
-        totp = pyotp.TOTP(secret)
-        return totp.verify(code, valid_window=1)
+        try:
+            totp = pyotp.TOTP(secret)
+            return totp.verify(code, valid_window=1)
+        except Exception:
+            return False
 
 
 totp_service = TOTPService()

@@ -1,3 +1,5 @@
+import html
+import logging
 from typing import Any, Dict, List, Optional
 
 from app.middleware.guardrail_middleware import apply_review_guardrails
@@ -12,95 +14,155 @@ class SynthesisAgent:
 
     async def generate_final_report(self, context: Dict[str, Any]) -> str:
         try:
-            from app.services.langchain_service import langchain_service
             from app.services.llm_service import llm_service
 
-            submission = context["submission"]
-            critiques = context["critiques"]
+            # Validate context and required keys
+            if not isinstance(context, dict):
+                logging.error("Invalid context type: expected dict, got %s", type(context))
+                raise TypeError("context must be a dict")
+            submission = context.get("submission")
+            critiques = context.get("critiques")
+            if submission is None or critiques is None:
+                logging.warning(
+                    "Context missing required keys: submission=%s, critiques=%s",
+                    bool(submission),
+                    bool(critiques),
+                )
+                raise KeyError("context must include 'submission' and 'critiques'")
 
-            # Advanced synthesis using multi-step LangChain workflow
-            # Step 1: Initial synthesis with RAG
-            initial_synthesis_prompt = f"""
-Perform initial synthesis of academic manuscript review:
+            # Extract and deduplicate findings
+            all_findings = []
+            for critique in critiques:
+                findings = critique.get("findings", [])
+                if findings:
+                    all_findings.extend(findings)
 
-Title: {submission.get('title', 'Unknown')}
-Full Content: {submission.get('content', '')}
+            # Deduplicate if findings exist
+            if all_findings:
+                unique_findings = issue_deduplicator.deduplicate_findings(all_findings)
+                prioritized = issue_deduplicator.prioritize_issues(unique_findings)
 
-Agent Reviews:
+                dedup_summary = f"""
+
+DEDUPLICATED FINDINGS:
+- Major Issues: {len(prioritized.get('major', []))}
+- Moderate Issues: {len(prioritized.get('moderate', []))}
+- Minor Issues: {len(prioritized.get('minor', []))}
+"""
+            else:
+                dedup_summary = ""
+
+            # Direct synthesis preserving line-by-line format
+            synthesis_prompt = f"""
+You are a senior academic editor. Synthesize the agent reviews into a professional report.
+
+MANUSCRIPT TITLE: {submission.get('title', 'Unknown')}{dedup_summary}
+
+AGENT REVIEWS (CONTAIN LINE-BY-LINE ANALYSIS):
 {self._format_critiques_for_synthesis(critiques)}
 
-Create comprehensive analysis focusing on:
-1. Overall manuscript quality assessment
-2. Critical issues identification with evidence
-3. Strengths and weaknesses analysis
-4. Domain-specific evaluation criteria
+GENERATE REVIEW WITH THIS EXACT STRUCTURE:
+
+# Comprehensive Review Report
+
+## Executive Summary
+[2-3 paragraphs: overall assessment, key findings, decision]
+
+## Detailed Findings
+
+### Methodology Review
+[Copy ALL line-by-line findings from Methodology Agent]
+[Keep format: **Line X**: "quoted text" - Issue: [problem] - Fix: [solution]]
+
+### Literature Review
+[Copy ALL line-by-line findings from Literature Agent]
+[Keep format: **Line X**: "quoted text" - Issue: [problem] - Fix: [solution]]
+
+### Clarity & Presentation Review
+[Copy ALL line-by-line findings from Clarity Agent]
+[Keep format: **Line X**: "quoted text" - Issue: [problem] - Fix: [solution]]
+
+### Ethics & Integrity Review
+[Copy ALL line-by-line findings from Ethics Agent]
+[Keep format: **Line X**: "quoted text" - Issue: [problem] - Fix: [solution]]
+
+## Recommendations
+[Top 5-10 actionable items with line references]
+
+## Conclusion
+[Final assessment and decision]
+
+CRITICAL INSTRUCTIONS:
+- PRESERVE ALL line numbers and quoted text EXACTLY as provided by agents
+- Do NOT paraphrase or rewrite the findings
+- Do NOT create new findings
+- MAINTAIN the format: **Line X**: "quoted text" - Issue - Fix
 """
 
-            initial_response = await langchain_service.invoke_with_rag(
-                initial_synthesis_prompt, context=submission, use_memory=False
-            )
-
-            # Step 2: Enhanced synthesis with chain-of-thought
-            enhanced_synthesis_prompt = f"""
-Based on the initial analysis, create a detailed professional review report:
-
-Initial Analysis:
-{initial_response}
-
-Original Manuscript:
-Title: {submission.get('title', 'Unknown')}
-Content: {submission.get('content', '')}
-
-Agent Reviews:
-{self._format_critiques_for_synthesis(critiques)}
-
-Generate a structured academic review with:
-1. Executive summary with scores and decision
-2. Critical issues with exact quotes and solutions
-3. Important improvements with detailed recommendations
-4. Minor suggestions with section references
-5. Manuscript strengths with specific examples
-6. Section-specific action items
-7. Domain-appropriate scoring breakdown
-
-Ensure professional academic tone and comprehensive coverage.
-"""
-
-            # Use chain-of-thought for final synthesis
-            final_response = await langchain_service.chain_of_thought_analysis(
-                enhanced_synthesis_prompt, submission
+            # Use basic LLM service to preserve formatting
+            response = await llm_service.generate_content(
+                synthesis_prompt, self.llm_provider or "groq"
             )
 
             # Apply guardrails to final review
-            sanitized_response = apply_review_guardrails(final_response)
+            sanitized_response = apply_review_guardrails(response)
             return sanitized_response
 
         except Exception:
-            # Fallback to basic synthesis if LangChain fails
+            # Fallback to basic synthesis
             from app.services.llm_service import llm_service
 
             prompt = self.build_synthesis_prompt(context)
-            response = await llm_service.generate_content(prompt, self.llm_provider)
+            response = await llm_service.generate_content(prompt, self.llm_provider or "groq")
             return apply_review_guardrails(response)
 
     async def generate_pdf_report(self, context: Dict[str, Any]) -> bytes:
         """Generate PDF version of the review report"""
-        review_content = await self.generate_final_report(context)
+        # Generate the final review content, log and re-raise on failure so callers can decide handling
+        try:
+            review_content = await self.generate_final_report(context)
+        except Exception as exc:
+            logging.exception("Failed to generate final report for PDF: %s", exc)
+            raise
+
         submission_info = context.get("submission", {})
 
-        pdf_buffer = pdf_generator.generate_pdf_report(review_content, submission_info)
+        # Generate PDF and validate result; log detailed error and re-raise to avoid returning invalid data
+        try:
+            pdf_buffer = pdf_generator.generate_pdf_report(review_content, submission_info)
+            if pdf_buffer is None:
+                raise RuntimeError("pdf_generator returned None instead of a buffer")
+            return pdf_buffer.getvalue()
+        except Exception as exc:
+            logging.exception("Failed to generate PDF report: %s", exc)
+            raise
         return pdf_buffer.getvalue()
 
     def build_synthesis_prompt(self, context: Dict[str, Any]) -> str:
-        submission = context["submission"]
-        critiques = context["critiques"]
+        # Validate context and required keys to avoid KeyError later on
+        if not isinstance(context, dict):
+            logging.error(
+                "Invalid context type for build_synthesis_prompt: expected dict, got %s",
+                type(context),
+            )
+            raise TypeError("context must be a dict")
+
+        submission = context.get("submission")
+        critiques = context.get("critiques")
+
+        if submission is None or critiques is None:
+            logging.error(
+                "Context missing required keys in build_synthesis_prompt: submission=%s, critiques=%s",
+                bool(submission),
+                bool(critiques),
+            )
+            raise KeyError("context must include 'submission' and 'critiques'")
 
         # Detect domain and get domain-specific configuration
         domain_info = domain_detector.detect_domain(submission)
         domain = domain_info["primary_domain"]
         weights = domain_detector.get_domain_specific_weights(domain)
-        domain_criteria = domain_detector.get_domain_specific_criteria(domain)
-
+        _ = domain_detector.get_domain_specific_criteria(domain)
         # Deduplicate findings across agents
         all_findings = []
         for critique in critiques:
@@ -118,10 +180,8 @@ Ensure professional academic tone and comprehensive coverage.
             critiques_text,
             overall_score,
             decision,
-            weights,
             prioritized_issues,
             domain_info,
-            domain_criteria,
         )
 
     def _format_critiques_with_deduplication(self, critiques, prioritized_issues) -> str:
@@ -154,18 +214,26 @@ Ensure professional academic tone and comprehensive coverage.
     def _format_agent_scores(self, critiques) -> str:
         lines = []
         for critique in critiques:
-            # safe access for dict-like critique
-            agent_type = (
-                critique.get("agent_type")
-                if isinstance(critique, dict)
-                else getattr(critique, "agent_type", "")
-            )
-            score = (
-                critique.get("score")
-                if isinstance(critique, dict)
-                else getattr(critique, "score", "")
-            )
-            lines.append(f"- {str(agent_type).title()}: {score}/10\n")
+            # Use helper to safely extract fields from dict-like or object-like critiques
+            agent_type = self._get_field(critique, "agent_type", "")
+            score = self._get_field(critique, "score", "")
+
+            # Normalize and format values for display
+            agent_label = str(agent_type).title() if agent_type is not None else ""
+            # Keep numeric scores as-is and coerce others to string for stable output
+            if isinstance(score, (int, float)):
+                score_value = score
+            else:
+                try:
+                    # attempt to parse numeric-like strings
+                    score_value = float(score)
+                    # if integer-like, display without decimal .0
+                    if score_value.is_integer():
+                        score_value = int(score_value)
+                except Exception:
+                    score_value = str(score)
+
+            lines.append(f"- {agent_label}: {score_value}/10\n")
         return "".join(lines)
 
     def _get_field(self, item, field, default=None):
@@ -180,11 +248,22 @@ Ensure professional academic tone and comprehensive coverage.
         quote_text = self._get_field(first, "text", "") or getattr(first, "text", "") or ""
         if not quote_text:
             return ""
+        # Normalize and escape to prevent XSS and remove problematic control characters
+        import html
+        import re
+
+        # Normalize to string and drop non-printable/control characters
+        normalized = str(quote_text)
+        normalized = re.sub(r"[\x00-\x1f\x7f]", " ", normalized)
+
+        # Use html.escape with quote=True to escape quotes and angle brackets
         if quote_mode == "full":
-            return f' Quote: "{quote_text}"'
+            safe = html.escape(normalized, quote=True)
+            return f' Quote: "{safe}"'
         if quote_mode == "snippet":
-            snippet = quote_text[:50] + "..." if len(quote_text) > 50 else quote_text
-            return f' Quote: "{snippet}"'
+            snippet_raw = normalized[:50] + "..." if len(normalized) > 50 else normalized
+            safe_snip = html.escape(snippet_raw, quote=True)
+            return f' Quote: "{safe_snip}"'
         return ""
 
     def _format_issues_list(self, issues, quote_mode: str = "none") -> str:
@@ -193,6 +272,8 @@ Ensure professional academic tone and comprehensive coverage.
                     "snippet" -> include first ~50 chars of quote
                     "none" -> no quote
         """
+        import html
+
         lines = []
         for issue in issues:
             text = self._get_field(issue, "finding")
@@ -205,20 +286,59 @@ Ensure professional academic tone and comprehensive coverage.
             highlights = self._get_field(issue, "highlights", None)
             quoted_text = self._format_quote(highlights, quote_mode)
 
-            lines.append(f"- [{str(section).title()}, Line {line_ref}] {text}{quoted_text}\n")
+            safe_section = html.escape(str(section).title())
+            safe_line_ref = html.escape(str(line_ref))
+            safe_text = html.escape(str(text))
+
+            lines.append(f"- [{safe_section}, Line {safe_line_ref}] {safe_text}{quoted_text}\n")
         return "".join(lines)
 
     def _calculate_weighted_score(self, critiques, weights: Dict[str, float]) -> float:
         total_score = total_weight = 0.0
 
         for critique in critiques:
-            agent_type = (critique.get("agent_type") or "").lower()
-            score = float(critique.get("score", 0) or 0)
-            weight = weights.get(agent_type, sum(weights.values()) / len(weights))
+            agent_type = self._normalize_agent_type(critique)
+            score = self._parse_score_value(critique, agent_type)
+            weight = self._determine_weight(critique, agent_type, weights)
+
             total_score += score * weight
             total_weight += weight
 
         return round((total_score / total_weight) if total_weight > 0 else 0.0, 1)
+
+    def _normalize_agent_type(self, critique) -> str:
+        raw_agent = self._get_field(critique, "agent_type", "")
+        try:
+            return str(raw_agent).strip().lower() if raw_agent is not None else ""
+        except Exception:
+            logging.exception("Failed to normalize agent_type: %r", raw_agent)
+            return ""
+
+    def _parse_score_value(self, critique, agent_type) -> float:
+        raw_score = self._get_field(critique, "score", 0)
+        try:
+            if isinstance(raw_score, (int, float)):
+                return float(raw_score)
+            return float(str(raw_score).strip())
+        except Exception:
+            logging.warning(
+                "Invalid score value %r for agent %s; defaulting to 0", raw_score, agent_type
+            )
+            return 0.0
+
+    def _determine_weight(self, critique, agent_type, weights) -> float:
+        raw_weight = critique.get("weight", None)
+        if raw_weight is None:
+            return weights.get(agent_type, 0.25)
+        try:
+            return float(raw_weight)
+        except Exception:
+            logging.warning(
+                "Invalid weight %r for agent %s; using default weight for agent or 0.25",
+                raw_weight,
+                agent_type,
+            )
+            return weights.get(agent_type, 0.25)
 
     def _determine_decision(self, score: float) -> str:
         if score >= 8.0:
@@ -229,120 +349,86 @@ Ensure professional academic tone and comprehensive coverage.
             return "Major Revisions"
         return "Reject"
 
-    def _build_prompt_template(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def _format_prioritized_section(self, prioritized_issues) -> str:
+        """Format prioritized issues for prompt"""
+        sections = []
+        if prioritized_issues.get("major"):
+            sections.append(f"### Major Issues ({len(prioritized_issues['major'])} items)")
+            sections.append("[List all major issues with line references]")
+        if prioritized_issues.get("moderate"):
+            sections.append(f"### Moderate Issues ({len(prioritized_issues['moderate'])} items)")
+            sections.append("[List top moderate issues with line references]")
+        if prioritized_issues.get("minor"):
+            sections.append(f"### Minor Suggestions ({len(prioritized_issues['minor'])} items)")
+            sections.append("[Summarize minor suggestions]")
+        return "\n".join(sections)
+
+    def _build_prompt_template(  # pylint: disable=too-many-arguments
         self,
         submission,
         critiques_text,
         overall_score,
         decision,
-        weights,  # pylint: disable=unused-argument
         prioritized_issues,
         domain_info,
-        domain_criteria,  # pylint: disable=unused-argument
     ) -> str:
-        # Issue counts available if needed for future enhancements
         _ = len(prioritized_issues.get("major", []))
         _ = len(prioritized_issues.get("moderate", []))
-        _ = len(prioritized_issues.get("minor", []))
-
-        domain = domain_info["primary_domain"]
-        _ = domain_info["confidence"]
-
-        content = submission.get("content", "")
-        lines = content.split("\n")
-        numbered_content = "\n".join([f"Line {i+1}: {line}" for i, line in enumerate(lines)])
+        safe_title = html.escape(str(submission.get("title", "Untitled")))
+        safe_domain = html.escape(str(domain_info.get("primary_domain", "unknown")).title())
+        safe_critiques_text = html.escape(critiques_text)
 
         return f"""
-Generate a COMPREHENSIVE LINE-BY-LINE academic review report.
+You are a senior academic editor. Synthesize the agent reviews into a professional report.
 
-MANUSCRIPT: {submission['title']}
-DOMAIN: {domain.title()}
+MANUSCRIPT: {safe_title}
+DOMAIN: {safe_domain}
 SCORE: {overall_score}/10 | DECISION: {decision}
 
-NUMBERED MANUSCRIPT:
-{numbered_content}
+AGENT FINDINGS (ALREADY CONTAIN LINE-BY-LINE ANALYSIS):
+{safe_critiques_text}
 
-AGENT FINDINGS:
+GENERATE REVIEW WITH THIS STRUCTURE:
+SCORE: {overall_score}/10 | DECISION: {decision}
+
+AGENT FINDINGS (ALREADY CONTAIN LINE-BY-LINE ANALYSIS):
 {critiques_text}
 
-GENERATE REVIEW WITH THIS EXACT STRUCTURE:
+GENERATE REVIEW WITH THIS STRUCTURE:
 
-# Detailed Professional Review Report
+# Comprehensive Review Report
 
-## Introduction
-[2-3 paragraphs on manuscript context and review scope]
+## Executive Summary
+[2-3 paragraphs summarizing overall assessment, score, and decision]
 
-## Summary of Key Findings
-- [Bullet point findings with specific numbers from manuscript]
-- [Include exact data, percentages, sample sizes]
+## Detailed Findings by Section
 
-## Methodological Approach
-[2-3 paragraphs analyzing methods, tools, and techniques used]
+### Methodology Review
+[Preserve all line-by-line findings from methodology agent]
+[Format: **Line X**: "[quoted text]" - Issue: [problem] - Fix: [solution]]
 
-## Line-by-Line Review
+### Literature Review
+[Preserve all line-by-line findings from literature agent]
+[Format: **Line X**: "[quoted text]" - Issue: [problem] - Fix: [solution]]
 
-### Abstract Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
+### Clarity & Presentation Review
+[Preserve all line-by-line findings from clarity agent]
+[Format: **Line X**: "[quoted text]" - Issue: [problem] - Fix: [solution]]
 
-**Line Y**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
+### Ethics & Integrity Review
+[Preserve all line-by-line findings from ethics agent]
+[Format: **Line X**: "[quoted text]" - Issue: [problem] - Fix: [solution]]
 
-### Introduction Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
-
-[Continue for ALL sections: Methods, Results, Discussion, Conclusion]
-
-### Methods Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
-
-### Results Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
-
-### Discussion Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
-
-### References Section
-**Line X**: "[exact quoted text]"
-- Issue: [specific problem]
-- Recommendation: [concrete fix]
-
-## Implications and Future Directions
-[2-3 paragraphs]
-
-## Strengths and Limitations
-
-### Strengths
-1. [Strength with line reference]: [explanation]
-2. [Strength with line reference]: [explanation]
-
-### Limitations
-1. [Limitation with line reference]: [explanation and fix]
-2. [Limitation with line reference]: [explanation and fix]
+## Prioritized Issues
+{self._format_prioritized_section(prioritized_issues)}
 
 ## Recommendations
-1. **Line X-Y**: [specific change needed]
-2. **Line X-Y**: [specific change needed]
+[Synthesize top 5-10 actionable recommendations with line references]
 
 ## Conclusion
-[2-3 paragraphs with final assessment]
+[Final assessment with decision rationale]
 
-CRITICAL REQUIREMENTS:
-- Quote EXACT text with LINE NUMBERS for every issue
-- Provide SPECIFIC recommendations for each quoted line
-- Review EVERY section line-by-line
-- Include at least 15-20 line-specific issues
-- Format: **Line X**: "exact text" then Issue and Recommendation
+CRITICAL: Preserve ALL line numbers and quoted text from agent reviews. Do NOT create new findings.
 """
 
     def _format_domain_criteria(self, domain_criteria: Dict[str, List[str]]) -> str:
@@ -353,11 +439,32 @@ CRITICAL REQUIREMENTS:
         return "\n".join(lines)
 
     def _format_critiques_for_synthesis(self, critiques: List[Dict[str, Any]]) -> str:
-        """Format critiques for LangChain synthesis"""
+        """Format critiques preserving line-by-line analysis"""
         formatted = []
         for critique in critiques:
             agent_type = critique.get("agent_type", "unknown")
-            content = critique.get("content", "No content")
             score = critique.get("score", 0)
-            formatted.append(f"{agent_type.title()} Agent (Score: {score}/10):\n{content}\n")
-        return "\n".join(formatted)
+
+            # Get findings with line-by-line format
+            findings = critique.get("findings", [])
+            findings_text = []
+
+            for finding in findings:
+                if isinstance(finding, dict):
+                    finding_text = finding.get("finding", "")
+                else:
+                    finding_text = getattr(finding, "finding", str(finding))
+
+                if finding_text:
+                    findings_text.append(finding_text)
+
+            # Format agent section
+            agent_section = f"\n{agent_type.title()} Agent (Score: {score}/10):\n"
+            if findings_text:
+                agent_section += "\n".join(findings_text)
+            else:
+                agent_section += "No specific findings"
+
+            formatted.append(agent_section)
+
+        return "\n\n".join(formatted)

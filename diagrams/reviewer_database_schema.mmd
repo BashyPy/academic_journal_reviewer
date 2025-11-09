@@ -2,7 +2,7 @@
 erDiagram
     REVIEW_ASSIGNMENTS ||--|| SUBMISSIONS : references
     REVIEW_ASSIGNMENTS ||--|| USERS : "assigned to"
-    
+
     REVIEW_ASSIGNMENTS {
         ObjectId _id PK
         String submission_id FK
@@ -16,7 +16,7 @@ erDiagram
         String recommendation
         Number overall_score
     }
-    
+
     SUBMISSIONS {
         ObjectId _id PK
         String title
@@ -24,7 +24,7 @@ erDiagram
         String detected_domain
         String status
     }
-    
+
     USERS {
         ObjectId _id PK
         String email

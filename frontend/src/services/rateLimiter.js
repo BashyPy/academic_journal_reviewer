@@ -7,9 +7,9 @@ class RateLimiter {
   async makeRequest(key, requestFn, maxRetries = 3) {
     const now = Date.now();
     const requestHistory = this.requests.get(key) || [];
-    
+
     const recentRequests = requestHistory.filter(time => now - time < 60000);
-    
+
     if (recentRequests.length >= 100) {
       const oldestRequest = Math.min(...recentRequests);
       const waitTime = 60000 - (now - oldestRequest);
@@ -20,7 +20,7 @@ class RateLimiter {
       try {
         recentRequests.push(now);
         this.requests.set(key, recentRequests);
-        
+
         const result = await requestFn();
         return result;
       } catch (error) {

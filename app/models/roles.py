@@ -103,16 +103,18 @@ def get_available_roles() -> List[str]:
     return [role.value for role in UserRole]
 
 
+_ROLE_DESCRIPTIONS = {
+    UserRole.AUTHOR: "Submit manuscripts for review",
+    UserRole.REVIEWER: "Review submitted manuscripts (future feature)",
+    UserRole.EDITOR: "Manage reviews and make editorial decisions",
+    UserRole.ADMIN: "Manage users and system settings",
+    UserRole.SUPER_ADMIN: "Full system access and control",
+}
+
+
 def get_role_description(role: str) -> str:
     """Get role description"""
-    descriptions = {
-        UserRole.AUTHOR: "Submit manuscripts for review",
-        UserRole.REVIEWER: "Review submitted manuscripts (future feature)",
-        UserRole.EDITOR: "Manage reviews and make editorial decisions",
-        UserRole.ADMIN: "Manage users and system settings",
-        UserRole.SUPER_ADMIN: "Full system access and control",
-    }
     try:
-        return descriptions.get(UserRole(role), "Unknown role")
+        return _ROLE_DESCRIPTIONS.get(UserRole(role), "Unknown role")
     except ValueError:
         return "Unknown role"

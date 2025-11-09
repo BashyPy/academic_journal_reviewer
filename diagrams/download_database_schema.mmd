@@ -13,7 +13,7 @@ erDiagram
         DateTime created_at
         DateTime completed_at
     }
-    
+
     USERS {
         ObjectId _id PK
         String email
@@ -21,7 +21,7 @@ erDiagram
         String role
         Boolean is_active
     }
-    
+
     REVIEW_ASSIGNMENTS ||--|| SUBMISSIONS : references
     REVIEW_ASSIGNMENTS ||--|| USERS : "assigned to"
     REVIEW_ASSIGNMENTS {

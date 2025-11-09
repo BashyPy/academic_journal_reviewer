@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 
 from app.utils.logger import get_logger
 
+logger = get_logger(__name__)
+
 
 @dataclass
 class GuardrailViolation:
@@ -40,6 +42,14 @@ class GuardrailViolation:
 class AcademicGuardrails:
     # Minimum required characters for a submission to be considered meaningful.
     MIN_CONTENT_LENGTH = 100
+
+    UNPROFESSIONAL_TERMS_REPLACEMENTS = {
+        "terrible": "inadequate",
+        "awful": "problematic",
+        "stupid": "unclear",
+        "ridiculous": "questionable",
+        "garbage": "insufficient",
+    }
 
     def __init__(self):
         self.ethical_keywords = [
@@ -119,29 +129,34 @@ class AcademicGuardrails:
 
     def _check_sensitive_data(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
-        content = submission.get("content", "")
+        raw_content = submission.get("content", "")
+        try:
+            if raw_content is None:
+                content = ""
+            elif isinstance(raw_content, str):
+                content = raw_content
+            else:
+                content = str(raw_content)
+        except Exception:
+            content = ""
 
         for pattern in self.sensitive_patterns:
             try:
-                # patterns are precompiled; use .search to avoid recompiling and to catch regex errors
-                if hasattr(pattern, "search"):
-                    match = pattern.search(content)
-                else:
-                    # fallback if an entry is still a string
-                    match = re.search(pattern, content, re.IGNORECASE)
-            except re.error:
-                # If a regex operation fails, skip that pattern rather than crashing
-                continue
-
-            if match:
-                violations.append(
-                    GuardrailViolation(
-                        type="sensitive_data",
-                        severity="critical",
-                        message="Potential sensitive/personal data detected",
-                        action="block",
+                if re.search(pattern, content):
+                    violations.append(
+                        GuardrailViolation(
+                            type="sensitive_data",
+                            severity="critical",
+                            message="Potential sensitive/personal data detected",
+                            action="block",
+                        )
                     )
-                )
+                    # Stop after the first sensitive data match for efficiency
+                    break
+            except re.error:
+                # Skip invalid regex patterns
+                continue
+        return violations
 
     def _check_submission_integrity(self, submission: Dict[str, Any]) -> List[GuardrailViolation]:
         violations = []
@@ -165,19 +180,18 @@ class AcademicGuardrails:
             violations.append(
                 GuardrailViolation(
                     type="content_quality",
-                    severity="medium",
-                    message=f"Submission too short for meaningful review (minimum {min_len} characters)",
+                    severity="low",
+                    message=f"Content is shorter than the minimum required length of {min_len} characters.",
                     action="warn",
                 )
             )
-
         return violations
 
     def _check_review_tone(self, review: str) -> List[GuardrailViolation]:
         violations = []
 
         # Check for unprofessional language; handle missing or invalid input safely.
-        unprofessional_terms = ["terrible", "awful", "stupid", "ridiculous", "garbage"]
+        unprofessional_terms = self.UNPROFESSIONAL_TERMS_REPLACEMENTS.keys()
 
         try:
             if review is None:
@@ -247,8 +261,21 @@ class AcademicGuardrails:
 
     def filter_content(self, content: str) -> Dict[str, Any]:
         """Filter content and return safety assessment."""
-        violations = self._check_sensitive_data({"content": content})
-        violations.extend(self._check_content_ethics({"content": content}))
+        try:
+            if not isinstance(content, str):
+                content = str(content) if content is not None else ""
+        except Exception:
+            content = ""
+
+        violations = []
+        try:
+            violations = self._check_sensitive_data({"content": content})
+            violations.extend(self._check_content_ethics({"content": content}))
+        except Exception as e:
+            logger.error(
+                f"Error in filter_content: {e}", additional_info={"function": "filter_content"}
+            )
+            violations = []
 
         high_severities = {"high", "critical"}
         has_high_severity = any(v.severity in high_severities for v in violations)
@@ -282,32 +309,26 @@ class AcademicGuardrails:
         Sanitize content by replacing unprofessional terms when a corresponding
         'sanitize' + 'unprofessional_tone' violation is present.
         """
-        # Ensure sanitized is a string
-        sanitized = content if isinstance(content, str) else str(content)
-
-        # Determine whether any violation requires sanitization
+        sanitized = content
         requires_sanitize = any(
-            getattr(v, "action", "") == "sanitize"
-            and getattr(v, "type", "") == "unprofessional_tone"
-            for v in violations
+            v.action == "sanitize" and v.type == "unprofessional_tone" for v in violations
         )
+
         if not requires_sanitize:
             return sanitized
 
-        replacements = {
-            "terrible": "inadequate",
-            "awful": "problematic",
-            "stupid": "unclear",
-            "ridiculous": "questionable",
-            "garbage": "insufficient",
-        }
+        replacements = self.UNPROFESSIONAL_TERMS_REPLACEMENTS
 
         # Compile a single regex that matches any bad term, case-insensitive,
         # and perform a single substitution pass using a replacement function.
         try:
-            pattern = re.compile("|".join(re.escape(k) for k in replacements.keys()), re.IGNORECASE)
+            pattern = re.compile(
+                r"\b(" + "|".join(re.escape(term) for term in replacements.keys()) + r")\b",
+                re.IGNORECASE,
+            )
 
-            def _repl(match):
+            def _repl(match: re.Match[str]) -> str:
+                # The default value ensures a string is always returned.
                 return replacements.get(match.group(0).lower(), match.group(0))
 
             sanitized = pattern.sub(_repl, sanitized)

@@ -6,7 +6,7 @@ sequenceDiagram
     participant Auth as Authentication
     participant S as Services
     participant DB as MongoDB
-    
+
     U->>F: Access Dashboard
     F->>A: GET /dashboard/stats
     A->>Auth: Validate Token & Role
@@ -18,7 +18,7 @@ sequenceDiagram
     S-->>A: Formatted Stats
     A-->>F: JSON Response
     F-->>U: Display Dashboard
-    
+
     U->>F: Create User
     F->>A: POST /users/create
     A->>Auth: Validate & Authorize
@@ -30,7 +30,7 @@ sequenceDiagram
     S-->>A: Success Response
     A-->>F: User Created
     F-->>U: Show Success Message
-    
+
     U->>F: Reprocess Submission
     F->>A: POST /submissions/{id}/reprocess
     A->>Auth: Validate & Authorize

@@ -5,21 +5,21 @@ sequenceDiagram
     participant API as Editor API
     participant DB as MongoDB
     participant AL as Audit Logger
-    
+
     E->>UI: Access Dashboard
     UI->>API: GET /editor/dashboard/stats
     API->>DB: Query submissions
     DB-->>API: Return data
     API-->>UI: Statistics
     UI-->>E: Display stats
-    
+
     E->>UI: View Submission
     UI->>API: GET /editor/submissions/:id
     API->>DB: Fetch submission + tasks
     DB-->>API: Submission data
     API-->>UI: Full details
     UI-->>E: Show details
-    
+
     E->>UI: Make Decision
     UI->>API: POST /editor/submissions/:id/decision
     API->>DB: Save decision

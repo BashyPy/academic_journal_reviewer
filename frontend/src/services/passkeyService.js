@@ -2,7 +2,7 @@ import axios from 'axios';
 
 class PasskeyService {
   isSupported() {
-    return window.PublicKeyCredential !== undefined && 
+    return window.PublicKeyCredential !== undefined &&
            navigator.credentials !== undefined;
   }
 
@@ -53,7 +53,7 @@ class PasskeyService {
       }
     };
 
-    await axios.post('/api/v1/auth/passkey/register', 
+    await axios.post('/api/v1/auth/passkey/register',
       { credential: credentialData },
       { headers: { 'X-API-Key': apiKey } }
     );
@@ -64,7 +64,7 @@ class PasskeyService {
   async authenticateWithPasskey() {
     const response = await axios.post('/api/v1/auth/passkey/auth-options');
     const options = response.data;
-    
+
     options.challenge = this.base64urlToBuffer(options.challenge);
     if (options.allowCredentials) {
       options.allowCredentials = options.allowCredentials.map(cred => ({
@@ -83,7 +83,7 @@ class PasskeyService {
         clientDataJSON: this.bufferToBase64url(assertion.response.clientDataJSON),
         authenticatorData: this.bufferToBase64url(assertion.response.authenticatorData),
         signature: this.bufferToBase64url(assertion.response.signature),
-        userHandle: assertion.response.userHandle ? 
+        userHandle: assertion.response.userHandle ?
           this.bufferToBase64url(assertion.response.userHandle) : null
       }
     };

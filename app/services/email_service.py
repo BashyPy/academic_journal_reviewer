@@ -13,9 +13,18 @@ logger = get_logger(__name__)
 class EmailService:
     def __init__(self):
         self.smtp_host = os.getenv("BREVO_SMTP_HOST", "smtp-relay.brevo.com")
-        self.smtp_port = int(os.getenv("BREVO_SMTP_PORT", "587"))
+        try:
+            self.smtp_port = int(os.getenv("BREVO_SMTP_PORT", "587"))
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid BREVO_SMTP_PORT, using default 587: {e}")
+            self.smtp_port = 587
+
         self.smtp_user = os.getenv("BREVO_SMTP_USER")
         self.smtp_password = os.getenv("BREVO_SMTP_PASSWORD")
+
+        if not self.smtp_user or not self.smtp_password:
+            logger.warning("SMTP credentials not configured")
+
         self.from_email = os.getenv("BREVO_FROM_EMAIL", "noreply@aaris.com")
         self.from_name = os.getenv("BREVO_FROM_NAME", "AARIS")
 
@@ -42,21 +51,25 @@ class EmailService:
 
     def send_otp(self, to_email: str, otp: str, purpose: str = "verification") -> bool:
         """Send OTP email"""
-        subject = f"AARIS - Your {purpose.title()} Code"
-        html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2>AARIS Verification Code</h2>
-            <p>Your {purpose} code is:</p>
-            <h1 style="color: #4CAF50; font-size: 32px; letter-spacing: 5px;">{otp}</h1>
-            <p>This code will expire in 10 minutes.</p>
-            <p>If you didn't request this code, please ignore this email.</p>
-            <hr>
-            <p style="color: #666; font-size: 12px;">AARIS - Academic Agentic Review Intelligence System</p>
-        </body>
-        </html>
-        """
-        return self.send_email(to_email, subject, html)
+        try:
+            subject = f"AARIS - Your {purpose.title()} Code"
+            html = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2>AARIS Verification Code</h2>
+                <p>Your {purpose} code is:</p>
+                <h1 style="color: #4CAF50; font-size: 32px; letter-spacing: 5px;">{otp}</h1>
+                <p>This code will expire in 10 minutes.</p>
+                <p>If you didn't request this code, please ignore this email.</p>
+                <hr>
+                <p style="color: #666; font-size: 12px;">AARIS - Academic Agentic Review Intelligence System</p>
+            </body>
+            </html>
+            """
+            return self.send_email(to_email, subject, html)
+        except Exception as e:
+            logger.error(f"Failed to send OTP email to {to_email}: {e}")
+            return False
 
     def send_welcome(self, to_email: str, name: str) -> bool:
         """Send welcome email"""

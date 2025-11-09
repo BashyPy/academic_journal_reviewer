@@ -18,12 +18,11 @@ from app.api.reviewer_dashboard_routes import router as reviewer_dashboard_route
 from app.api.roles_routes import router as roles_router
 from app.api.routes import router
 from app.api.super_admin_routes import router as super_admin_router
-from app.middleware.rate_limiter import rate_limit_middleware
-from app.middleware.waf import waf_middleware
 from app.services.disclaimer_service import disclaimer_service
 from app.services.init_admin import create_default_admin
 from app.services.otp_cleanup_service import otp_cleanup_service
 from app.services.security_monitor import security_monitor
+from app.services.vector_store_validator import vector_store_validator
 from app.utils.logger import get_logger
 
 # Initialize logger
@@ -37,17 +36,69 @@ app = FastAPI(
     redoc_url="/redoc",  # Explicit redoc URL
 )
 
-# Rate limiting storage
-rate_limit_storage = defaultdict(list)
+
+class RateLimiter:
+    """A simple in-memory rate limiter."""
+
+    def __init__(self, max_requests: int, window_minutes: int):
+        self.storage = defaultdict(list)
+        self.max_requests = max_requests
+        self.window = timedelta(minutes=window_minutes)
+
+    def is_rate_limited(self, client_ip: str) -> bool:
+        """Check if a client is rate-limited."""
+        now = datetime.now()
+        # Clean old entries
+        self.storage[client_ip] = [
+            timestamp for timestamp in self.storage[client_ip] if now - timestamp < self.window
+        ]
+        # Check rate limit
+        return len(self.storage[client_ip]) >= self.max_requests
+
+    def record_request(self, client_ip: str):
+        """Record a new request from a client."""
+        self.storage[client_ip].append(datetime.now())
+
+
+# Rate limiting instance
+rate_limiter = RateLimiter(max_requests=100, window_minutes=15)
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize default admin and start background tasks on startup"""
-    await create_default_admin()
+    try:
+        logger.info("Starting admin initialization...")
+        admin = await create_default_admin()
+        if admin:
+            logger.info("✅ Admin setup complete")
+        else:
+            logger.warning("⚠️ Admin setup failed or incomplete")
+    except Exception as e:
+        logger.error(f"❌ Admin initialization error: {e}")
 
-    # Start OTP cleanup background task
-    _ = asyncio.create_task(otp_cleanup_background_task())
+    # Validate vector store for RAG functionality
+    try:
+        logger.info("Validating vector store...")
+        vector_status = await vector_store_validator.validate_vector_store()
+        if vector_status.get("available"):
+            logger.info("✅ Vector store validated - RAG enabled")
+        else:
+            logger.warning(
+                f"⚠️ Vector store not available: {vector_status.get('error')} - "
+                "RAG features disabled"
+            )
+    except Exception as e:
+        logger.error(f"❌ Vector store validation error: {e}")
+
+    # Start background tasks
+    try:
+        logger.info("Starting background tasks...")
+        _ = asyncio.create_task(otp_cleanup_background_task())
+        _ = asyncio.create_task(embedding_cache_cleanup_task())
+        logger.info("✅ Background tasks started")
+    except Exception as e:
+        logger.error(f"❌ Failed to start background tasks: {e}")
 
 
 async def otp_cleanup_background_task():
@@ -62,44 +113,44 @@ async def otp_cleanup_background_task():
         await asyncio.sleep(3600)
 
 
-# Apply security middleware in order: WAF -> Rate Limiting
-app.middleware("http")(waf_middleware)
-app.middleware("http")(rate_limit_middleware)
+async def embedding_cache_cleanup_task():
+    """Background task to clean up expired embedding caches"""
+    while True:
+        try:
+            from app.services.embedding_cache_service import embedding_cache_service
+
+            await embedding_cache_service.cleanup_expired()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(e, additional_info={"task": "embedding_cache_cleanup"})
+
+        # Wait 1 day before next cleanup
+        await asyncio.sleep(86400)
 
 
-# Security middleware
 @app.middleware("http")
-async def security_middleware(request: Request, call_next):
+async def security_and_logging_middleware(request: Request, call_next):
+    """Middleware for security, rate limiting, and logging."""
     start_time = time.time()
     client_ip = request.client.host if request.client else "unknown"
 
-    # Check if IP is blocked
+    # Security Monitor
     if security_monitor.is_blocked(client_ip):
-        logger.warning(f"Blocked IP attempted access: {client_ip}")
+        logger.warning(
+            f"Blocked IP tried to connect: {client_ip}",
+            additional_info={"ip": client_ip},
+        )
         return JSONResponse(
             status_code=403,
             content={"detail": "Access denied"},
         )
 
     # Rate limiting
-    now = datetime.now()
-    rate_limit_window = timedelta(minutes=15)
-    max_requests = 100  # 100 requests per 15 minutes
-
-    # Clean old entries
-    rate_limit_storage[client_ip] = [
-        timestamp
-        for timestamp in rate_limit_storage[client_ip]
-        if now - timestamp < rate_limit_window
-    ]
-
-    # Check rate limit
-    if len(rate_limit_storage[client_ip]) >= max_requests:
+    if rate_limiter.is_rate_limited(client_ip):
         logger.warning(
             f"Rate limit exceeded for IP: {client_ip}",
             additional_info={
                 "ip": client_ip,
-                "requests": len(rate_limit_storage[client_ip]),
+                "requests": len(rate_limiter.storage.get(client_ip, [])),
             },
         )
         return JSONResponse(
@@ -108,8 +159,8 @@ async def security_middleware(request: Request, call_next):
             headers={"Retry-After": "900"},  # 15 minutes
         )
 
-    # Add current request to rate limit storage
-    rate_limit_storage[client_ip].append(now)
+    # Record current request
+    rate_limiter.record_request(client_ip)
 
     # Input validation for common attack patterns
     user_agent = request.headers.get("user-agent", "")
@@ -220,7 +271,13 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check with vector store status."""
+    vector_status = await vector_store_validator.validate_vector_store()
+    return {
+        "status": "healthy",
+        "rag_enabled": vector_status.get("rag_enabled", False),
+        "vector_store": vector_status,
+    }
 
 
 @app.get("/disclaimer")
@@ -236,6 +293,66 @@ async def get_disclaimer():
             "system_disclaimer": "Human oversight required for all AI-generated reviews.",
             "disclaimer": "This system provides preliminary AI analysis only.",
         }
+
+
+@app.get("/api/v1/system/rag-metrics")
+async def get_rag_metrics():
+    """Get RAG effectiveness metrics."""
+    try:
+        from app.services.langchain_service import langchain_service
+
+        metrics = langchain_service.get_rag_metrics()
+        vector_status = await vector_store_validator.validate_vector_store()
+
+        return {
+            "rag_metrics": metrics,
+            "vector_store_status": vector_status,
+            "status": "operational" if vector_status.get("available") else "degraded",
+        }
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(e, additional_info={"endpoint": "rag-metrics"})
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to retrieve RAG metrics.", "status": "error"},
+        )
+
+
+@app.get("/api/v1/system/enhancement-metrics")
+async def get_enhancement_metrics():
+    """Get enhancement features metrics."""
+    try:
+        from app.services.mongodb_service import mongodb_service
+        from app.services.vector_security_service import vector_security_service
+
+        # Get checkpoint and cache counts concurrently
+        checkpoint_count_task = mongodb_service.db["workflow_checkpoints"].count_documents({})
+        cache_count_task = mongodb_service.db["embedding_cache"].count_documents({})
+        checkpoint_count, cache_count = await asyncio.gather(
+            checkpoint_count_task, cache_count_task
+        )
+
+        # Get security stats
+        security_stats = vector_security_service.get_security_stats()
+
+        return {
+            "checkpoints": {
+                "active_count": checkpoint_count,
+                "enabled": True,
+            },
+            "embedding_cache": {
+                "cached_count": cache_count,
+                "ttl_days": 30,
+                "enabled": True,
+            },
+            "vector_security": {
+                **security_stats,
+                "enabled": True,
+            },
+            "status": "operational",
+        }
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(e, additional_info={"endpoint": "enhancement-metrics"})
+        return {"error": str(e), "status": "error"}
 
 
 if __name__ == "__main__":

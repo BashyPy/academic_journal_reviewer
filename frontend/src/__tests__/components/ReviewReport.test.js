@@ -14,9 +14,9 @@ describe('ReviewReport Component', () => {
 
   test('renders loading state initially', () => {
     mockedAxios.get.mockImplementationOnce(() => new Promise(() => {}));
-    
+
     render(<ReviewReport submissionId="test-id" />);
-    
+
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
@@ -33,7 +33,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/final review report/i)).toBeInTheDocument();
       expect(screen.getByText(/test.pdf/i)).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/disclaimer/i)).toBeInTheDocument();
       expect(screen.getByText(/ai-generated review requiring human validation/i)).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/review not completed/i)).toBeInTheDocument();
       expect(screen.getByText(/please wait/i)).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="invalid-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/error/i)).toBeInTheDocument();
       expect(screen.getByText(/submission not found/i)).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe('ReviewReport Component', () => {
     global.URL.revokeObjectURL = jest.fn();
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/download pdf/i)).toBeInTheDocument();
     });
@@ -142,7 +142,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText(/completed on/i)).toBeInTheDocument();
       expect(screen.getByText(/january 15, 2024/i)).toBeInTheDocument();
@@ -160,7 +160,7 @@ describe('ReviewReport Component', () => {
     });
 
     render(<ReviewReport submissionId="test-id" />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Main Title')).toBeInTheDocument();
       expect(screen.getByText('Subtitle')).toBeInTheDocument();

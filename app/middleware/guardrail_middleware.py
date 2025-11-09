@@ -101,7 +101,8 @@ def apply_review_guardrails(review_content: str) -> str:
         # Log any violations safely
         if violations:
             logger.info(
-                f"Review guardrail violations: {[getattr(v, 'message', repr(v)) for v in violations]}"
+                "Review guardrail violations: %s",
+                [getattr(v, "message", repr(v)) for v in violations],
             )
 
         # Sanitize content if needed

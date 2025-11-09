@@ -5,18 +5,18 @@ stateDiagram-v2
     InProgress --> InProgress: Update Draft
     InProgress --> Completed: Submit Review
     Completed --> [*]: Review Finalized
-    
+
     note right of Pending
         Awaiting reviewer action
         No start time recorded
     end note
-    
+
     note right of InProgress
         Review started
         Start time recorded
         Can be updated
     end note
-    
+
     note right of Completed
         Review submitted
         Completion time recorded

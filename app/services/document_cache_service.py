@@ -1,6 +1,9 @@
 import hashlib
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+
+from pymongo.errors import PyMongoError
 
 from app.services.mongodb_service import mongodb_service
 
@@ -24,8 +27,7 @@ class DocumentCacheService:
             {"content_hash": content_hash, "expires_at": {"$gt": now}},
             {"submission_data": 1, "_id": 0},
         )
-
-        return cached_doc.get("submission_data") if cached_doc else None
+        return cached_doc
 
     async def cache_submission(
         self, content: str, submission_data: Dict[str, Any], ttl_hours: int = 168
@@ -34,26 +36,22 @@ class DocumentCacheService:
         content_hash = self._generate_content_hash(content)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
 
-        # Try to increment access_count for existing document
-        result = await mongodb_service.db[self.collection_name].update_one(
-            {"content_hash": content_hash}, {"$inc": {"access_count": 1}}
-        )
-
-        # If no document exists, create new one
-        if result.matched_count == 0:
+        try:
             await mongodb_service.db[self.collection_name].update_one(
                 {"content_hash": content_hash},
                 {
-                    "$set": {
-                        "content_hash": content_hash,
+                    "$set": {"expires_at": expires_at},
+                    "$inc": {"access_count": 1},
+                    "$setOnInsert": {
                         "submission_data": submission_data,
                         "created_at": datetime.now(timezone.utc),
-                        "expires_at": expires_at,
-                        "access_count": 1,
-                    }
+                    },
                 },
                 upsert=True,
             )
+        except PyMongoError as e:
+            logging.error(f"Failed to cache submission: {e}")
+            # Depending on requirements, you might want to re-raise or handle differently
 
 
 document_cache_service = DocumentCacheService()

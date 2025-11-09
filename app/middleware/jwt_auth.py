@@ -15,6 +15,9 @@ logger = get_logger(__name__)
 
 # JWT Configuration
 JWT_SECRET = settings.get_jwt_secret()
+if not JWT_SECRET:
+    logger.error("JWT_SECRET not configured in environment variables")
+    raise ValueError("JWT_SECRET not configured in environment variables")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -23,19 +26,23 @@ security = HTTPBearer(auto_error=False)
 
 def create_access_token(user_data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token"""
-    to_encode = {
-        "email": user_data["email"],
-        "role": user_data["role"],
-        "user_id": str(user_data.get("_id", "")),
-    }
+    try:
+        to_encode = {
+            "email": user_data["email"],
+            "role": user_data["role"],
+            "user_id": str(user_data.get("_id", "")),
+        }
+    except KeyError as e:
+        logger.error(f"Missing key in user_data for JWT creation: {e}")
+        raise ValueError(f"Missing key in user_data for JWT creation: {e}") from e
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+        expire = datetime.now() + timedelta(hours=JWT_EXPIRATION_HOURS)
 
     to_encode["exp"] = expire
-    to_encode["iat"] = datetime.utcnow()
+    to_encode["iat"] = datetime.now()
 
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -74,7 +81,14 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = await user_service.get_user_by_email(payload["email"])
+    try:
+        user = await user_service.get_user_by_email(payload["email"])
+    except Exception as e:
+        logger.error(f"Error retrieving user by email: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not process user information.",
+        ) from e
 
     if not user or not user.get("active", True):
         raise HTTPException(

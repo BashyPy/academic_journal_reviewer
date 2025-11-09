@@ -9,7 +9,30 @@ from fastapi import HTTPException
 from app.services.audit_logger import audit_logger
 from app.services.mongodb_service import mongodb_service
 from app.services.user_service import user_service
+from app.utils.logger import get_logger
 from app.utils.request_utils import get_client_ip
+
+logger = get_logger(__name__)
+
+
+# MongoDB Operators
+MONGO_GROUP = "$group"
+MONGO_MATCH = "$match"
+MONGO_SORT = "$sort"
+MONGO_LIMIT = "$limit"
+MONGO_PROJECT = "$project"
+MONGO_SET = "$set"
+MONGO_SUM = "$sum"
+MONGO_COND = "$cond"
+MONGO_EQ = "$eq"
+MONGO_NE = "$ne"
+MONGO_GTE = "$gte"
+MONGO_AND = "$and"
+MONGO_DATE_TO_STRING = "$dateToString"
+MONGO_AVG = "$avg"
+MONGO_MIN = "$min"
+MONGO_MAX = "$max"
+MONGO_SUBTRACT = "$subtract"
 
 
 async def create_user_common(
@@ -24,11 +47,13 @@ async def create_user_common(
 ) -> Dict:
     """Common user creation logic used across multiple routes"""
     try:
+        # Ensure username is a string, defaulting to the email prefix if not provided.
+        effective_username = username if username else email.split("@")[0]
         user = await user_service.create_user(
             email=email,
             password=password,
             name=name,
-            username=username,
+            username=effective_username,
         )
 
         # Set role if different from default
@@ -53,8 +78,34 @@ async def create_user_common(
         return user
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as e:
+        # It's better to log the actual exception for debugging purposes.
+        # Assuming a logger is available or can be imported.
+        logger.error(f"User creation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="User creation failed")
+
+
+def handle_common_exceptions(func=None, *, operation_name: str = "operation"):
+    """Common exception handling decorator"""
+
+    def decorator(f):
+        async def wrapper(*args, **kwargs):
+            try:
+                return await f(*args, **kwargs)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(
+                    f"{operation_name} failed: {e} | context: args={args}, kwargs={kwargs}",
+                    exc_info=True,
+                )
+                raise HTTPException(status_code=500, detail=f"{operation_name} failed")
+
+            return wrapper
+
+        if func:
+            return decorator(func)
+        return decorator
 
 
 async def get_paginated_users(
@@ -67,13 +118,20 @@ async def get_paginated_users(
     """Common pagination logic for user listings"""
     db = await mongodb_service.get_database()
 
-    query = {}
+    query: Dict[str, Any] = {}
     if role:
         query["role"] = role
     if is_active is not None:
         query["is_active"] = is_active
+
     if exclude_super_admin:
-        query["role"] = {"$ne": "super_admin"}
+        if "role" in query:
+            # If a role is specified, and we need to exclude super_admin,
+            # we combine the conditions.
+            query["$and"] = [{"role": query.pop("role")}, {"role": {"$ne": "super_admin"}}]
+        else:
+            # If no role is specified, just exclude super_admin.
+            query["role"] = {"$ne": "super_admin"}
 
     users = await db.users.find(query).skip(skip).limit(limit).to_list(length=limit)
     total = await db.users.count_documents(query)
@@ -93,6 +151,19 @@ async def get_paginated_submissions(
     sort_direction: int = -1,
 ) -> Dict:
     """Common pagination logic for submission listings"""
+    if sort_direction not in [1, -1]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid sort_direction. Use 1 for ascending, -1 for descending.",
+        )
+
+    allowed_sort_fields = ["created_at", "updated_at", "status", "title"]
+    if sort_field not in allowed_sort_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sort_field. Allowed fields are: {', '.join(allowed_sort_fields)}",
+        )
+
     db = await mongodb_service.get_database()
 
     query = {}
@@ -126,22 +197,17 @@ async def get_paginated_submissions(
 async def get_submission_with_downloads(submission_id: str) -> Dict:
     """Get submission details with download URLs"""
     db = await mongodb_service.get_database()
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
+    try:
+        obj_submission_id = ObjectId(submission_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid submission_id format: {e}")
+
+    submission = await db.submissions.find_one({"_id": obj_submission_id})
 
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
 
     submission["_id"] = str(submission["_id"])
-
-    # Add download URLs
-    submission["download_urls"] = {
-        "manuscript": f"/api/v1/downloads/manuscripts/{submission_id}",
-        "review": (
-            f"/api/v1/downloads/reviews/{submission_id}"
-            if submission.get("status") == "completed"
-            else None
-        ),
-    }
 
     return submission
 
@@ -178,162 +244,106 @@ async def get_paginated_audit_logs(
 
 
 async def get_submission_analytics(days: int = 30) -> Dict:
-    """Common submission analytics aggregation"""
+    """Common submission analytics logic"""
     db = await mongodb_service.get_database()
     start_date = datetime.now() - timedelta(days=days)
 
     pipeline = [
-        {"$match": {"created_at": {"$gte": start_date}}},
+        {MONGO_MATCH: {"created_at": {MONGO_GTE: start_date}}},
         {
-            "$group": {
+            MONGO_GROUP: {
                 "_id": {
-                    "$dateToString": {
+                    MONGO_DATE_TO_STRING: {
                         "format": "%Y-%m-%d",
                         "date": "$created_at",
                     }
                 },
-                "count": {"$sum": 1},
-                "completed": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
-                "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}},
+                "count": {MONGO_SUM: 1},
+                "completed": {
+                    MONGO_SUM: {MONGO_COND: [{MONGO_EQ: ["$status", "completed"]}, 1, 0]}
+                },
+                "failed": {MONGO_SUM: {MONGO_COND: [{MONGO_EQ: ["$status", "failed"]}, 1, 0]}},
             }
         },
-        {"$sort": {"_id": 1}},
+        {MONGO_SORT: {"_id": 1}},
     ]
 
     results = await db.submissions.aggregate(pipeline).to_list(length=days)
     return {"analytics": results, "period_days": days}
 
 
-async def get_domain_analytics(limit: int = 100) -> Dict:
-    """Common domain distribution analytics"""
+async def get_performance_analytics(user_id: Optional[str] = None) -> Dict:
+    """Common performance analytics logic"""
     db = await mongodb_service.get_database()
+    query: Dict[str, Any] = {"status": "completed", "completed_at": {"$ne": None}}
 
-    pipeline = [
-        {"$group": {"_id": "$detected_domain", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-    ]
-
-    if limit > 0:
-        pipeline.append({"$limit": limit})
-
-    results = await db.submissions.aggregate(pipeline).to_list(length=limit)
-    return {"domain_distribution": results}
-
-
-def generate_filename_base(submission: Dict) -> str:
-    """Common filename generation logic"""
-    original_filename = submission.get("file_metadata", {}).get(
-        "original_filename", submission.get("title", "manuscript")
-    )
-    # Remove extension if present
-    if "." in original_filename:
-        base_name = original_filename.rsplit(".", 1)[0]
-    else:
-        base_name = original_filename
-
-    return base_name
-
-
-async def reprocess_submission_common(submission_id: str, user: Dict, request_obj: Any) -> Dict:
-    """Common submission reprocessing logic"""
-    db = await mongodb_service.get_database()
-
-    submission = await db.submissions.find_one({"_id": ObjectId(submission_id)})
-    if not submission:
-        raise HTTPException(status_code=404, detail="Submission not found")
-
-    await db.submissions.update_one(
-        {"_id": ObjectId(submission_id)},
-        {"$set": {"status": "pending", "updated_at": datetime.now()}},
-    )
-
-    await audit_logger.log_event(
-        event_type="submission_reprocessed",
-        user_id=str(user["_id"]),
-        user_email=user.get("email"),
-        ip_address=get_client_ip(request_obj),
-        details={"submission_id": submission_id},
-    )
-
-    return {"message": "Submission queued for reprocessing", "submission_id": submission_id}
-
-
-async def get_performance_metrics(user_id: Optional[str] = None) -> Dict:
-    """Common performance metrics calculation"""
-    db = await mongodb_service.get_database()
-
-    query = {"status": "completed", "completed_at": {"$exists": True}}
     if user_id:
-        query["user_id"] = user_id
+        try:
+            query["user_id"] = ObjectId(user_id)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid user_id format: {e}")
 
+    processing_time_field = "$processing_time"
     pipeline = [
         {"$match": query},
         {"$project": {"processing_time": {"$subtract": ["$completed_at", "$created_at"]}}},
         {
             "$group": {
                 "_id": None,
-                "avg_time_ms": {"$avg": "$processing_time"},
-                "min_time_ms": {"$min": "$processing_time"},
-                "max_time_ms": {"$max": "$processing_time"},
+                "avg_time_ms": {"$avg": processing_time_field},
+                "min_time_ms": {"$min": processing_time_field},
+                "max_time_ms": {"$max": processing_time_field},
             }
         },
     ]
 
     result = await db.submissions.aggregate(pipeline).to_list(length=1)
-    return {
-        "performance": (
-            result[0] if result else {"avg_time_ms": 0, "min_time_ms": 0, "max_time_ms": 0}
-        )
-    }
+    return {"performance": result[0] if result else {}}
 
 
-async def update_user_status_common(
-    user_id: str, is_active: bool, admin: Dict, request_obj: Any
-) -> Dict:
-    """Common user status update logic"""
+# Aliases for backward compatibility
+get_performance_metrics = get_performance_analytics
+get_domain_analytics = get_submission_analytics
+
+
+def generate_filename_base(submission_id: str, title: str = "manuscript") -> str:
+    """Generate safe filename base for downloads"""
+    import re
+
+    safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title)[:50]
+    return f"{safe_title}_{submission_id[:8]}"
+
+
+async def update_user_status_common(user_id: str, is_active: bool) -> Dict:
+    """Update user active status"""
     db = await mongodb_service.get_database()
+    try:
+        obj_user_id = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid user_id: {e}")
 
-    result = await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"is_active": is_active, "updated_at": datetime.now()}},
-    )
+    result = await db.users.update_one({"_id": obj_user_id}, {"$set": {"is_active": is_active}})
 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
 
-    await audit_logger.log_event(
-        event_type="user_status_updated",
-        user_id=str(admin["_id"]),
-        user_email=admin.get("email"),
-        ip_address=get_client_ip(request_obj),
-        details={"target_user_id": user_id, "is_active": is_active},
+    return {"message": "User status updated"}
+
+
+async def reprocess_submission_common(submission_id: str) -> Dict:
+    """Reprocess a failed submission"""
+    db = await mongodb_service.get_database()
+    try:
+        obj_submission_id = ObjectId(submission_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid submission_id: {e}")
+
+    submission = await db.submissions.find_one({"_id": obj_submission_id})
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    await db.submissions.update_one(
+        {"_id": obj_submission_id}, {"$set": {"status": "pending", "error_message": None}}
     )
 
-    return {"message": "User status updated successfully"}
-
-
-def handle_common_exceptions(operation_name: str = "operation"):
-    """Common exception handling decorator"""
-
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            try:
-                return await func(*args, **kwargs)
-            except HTTPException:
-                raise
-            except Exception as e:
-                from app.utils.logger import get_logger
-
-                logger = get_logger(__name__)
-                # Log the exception with a clear message and include traceback,
-                # embedding additional context in the message since this logger
-                # implementation does not accept the 'extra' keyword argument.
-                logger.error(
-                    f"{operation_name} failed: {e} | context: args={args}, kwargs={kwargs}",
-                    exc_info=True,
-                )
-                raise HTTPException(status_code=500, detail=f"{operation_name} failed")
-
-        return wrapper
-
-    return decorator
+    return {"message": "Submission queued for reprocessing"}

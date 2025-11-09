@@ -2,7 +2,6 @@
 Structured logging utility for AARIS (Academic Agentic Review Intelligence System)
 """
 
-import inspect
 import sys
 import traceback
 from datetime import datetime
@@ -35,7 +34,18 @@ class AARISLogger:
     """
 
     def __init__(self, log_dir: Union[str, Path] = "logs"):
-        self.log_dir = Path(log_dir)
+        # Validate and sanitize log_dir to prevent path traversal
+        log_path = Path(log_dir).resolve()
+        base_dir = Path.cwd().resolve()
+
+        # Ensure log_dir is within the current working directory
+        try:
+            log_path.relative_to(base_dir)
+        except ValueError:
+            # If log_path is outside base_dir, use default safe location
+            log_path = base_dir / "logs"
+
+        self.log_dir = log_path
         self.log_files = {
             LogLevel.DEBUG: self.log_dir / "debug.log",
             LogLevel.INFO: self.log_dir / "info.log",
@@ -52,21 +62,27 @@ class AARISLogger:
         # Ensure directory creation is attempted but won't raise outwards on failure.
         self._ensure_log_directory()
         self._log_cache = set()
+        self.default_context = {
+            "AI Engineer": "Muhammad",
+            "system": "AARIS",
+            "component": "backend",
+        }
 
     def _ensure_log_directory(self) -> None:
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _get_caller_info() -> tuple[str, str]:
-        frame = inspect.currentframe()
-        current_function = parent_function = "Unknown"
-        if frame is not None:
-            caller = frame.f_back
-            parent = caller.f_back if caller and caller.f_back else None
-            if caller:
-                current_function = caller.f_code.co_name
-            if parent:
-                parent_function = parent.f_code.co_name
+        try:
+            # sys._getframe is faster than inspect.currentframe
+            # 2 levels up to get the caller of the logging method.
+            frame = sys._getframe(2)
+            current_function = frame.f_code.co_name
+            parent_frame = frame.f_back
+            parent_function = parent_frame.f_code.co_name if parent_frame else "Unknown"
+        except (ValueError, AttributeError):
+            current_function = "Unknown"
+            parent_function = "Unknown"
         return current_function, parent_function
 
     def _format_message(
@@ -79,35 +95,30 @@ class AARISLogger:
     ) -> str:
         """Format the complete log message with all metadata by delegating to helpers."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        current_function, parent_function = self._get_caller_info()
+        current_function, _ = self._get_caller_info()
 
         log_msg = [
             "=" * 80,
             f"TIMESTAMP: {timestamp}",
             f"LEVEL: {level.value}",
             f"FUNCTION: {current_function}",
-            f"PARENT FUNCTION: {parent_function}",
-            "-" * 80,
             f"MESSAGE: {message}",
         ]
 
         if error:
             log_msg.extend(self._render_error_section(error, exc_info))
 
-        default_context = {
-            "AI Engineer": "Muhammad",
-            "system": "AARIS",
-            "component": "backend",
-        }
+        # Create a copy to avoid modifying the instance-level default context
+        log_context = self.default_context.copy()
 
         if additional_info:
             try:
-                default_context.update(additional_info)
+                log_context.update(additional_info)
             except Exception as e:
                 # If merging additional_info fails, record the failure in the context instead of raising.
-                default_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
+                log_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
-        context_str = self._render_context(default_context)
+        context_str = self._render_context(log_context)
 
         log_msg.extend(
             [
@@ -154,10 +165,24 @@ class AARISLogger:
         except Exception as e:
             return f"Failed to render context: {e}"
 
+    def _merge_context(
+        self, base_context: Dict[str, Any], additional_info: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Safely merge additional info into a base context dictionary."""
+        if additional_info:
+            try:
+                base_context.update(additional_info)
+            except Exception as e:
+                base_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
+        return base_context
+
     def _write_log(self, level: LogLevel, message: str, custom_file: Optional[Path] = None) -> None:
-        log_hash = hash(message)
-        if log_hash in self._log_cache:
-            return
+        try:
+            log_hash = hash(message)
+            if log_hash in self._log_cache:
+                return
+        except TypeError:
+            log_hash = None  # Message is not hashable, cannot check for duplicates.
 
         try:
             self._ensure_log_directory()
@@ -166,7 +191,8 @@ class AARISLogger:
 
             with open(target_file, "a", encoding="utf-8") as f:
                 f.write(message)
-            self._log_cache.add(log_hash)
+            if log_hash is not None:
+                self._log_cache.add(log_hash)
         except (IOError, PermissionError) as e:
             print(f"Failed to write log: {e}", file=sys.stderr)
 
@@ -222,7 +248,13 @@ class AARISLogger:
             exc_value = None
 
         # Do not mutate caller-provided additional_info; create a safe copy and ensure message is included.
-        safe_additional = dict(additional_info) if additional_info else {}
+        try:
+            safe_additional = dict(additional_info) if additional_info else {}
+        except (TypeError, ValueError):
+            safe_additional = {
+                "additional_info_error": "Provided additional_info is not a valid dictionary."
+            }
+
         if "message" not in safe_additional:
             safe_additional["message"] = message
 
@@ -245,15 +277,13 @@ class AARISLogger:
         submission_id: str,
         additional_info: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log agent-specific activities"""
         context = {
             "agent_type": agent_type,
             "action": action,
             "submission_id": submission_id,
             "component": "agent_system",
         }
-        if additional_info:
-            context.update(additional_info)
+        context = self._merge_context(context, additional_info)
 
         message = f"Agent {agent_type} performed {action} for submission {submission_id}"
         formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
@@ -266,18 +296,13 @@ class AARISLogger:
         status: str,
         additional_info: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log review process stages"""
         context = {
             "submission_id": submission_id,
             "stage": stage,
             "status": status,
             "component": "review_system",
         }
-        if additional_info:
-            try:
-                context.update(additional_info)
-            except Exception as e:
-                context["additional_info_error"] = f"Failed to merge additional_info: {e}"
+        context = self._merge_context(context, additional_info)
 
         message = f"Review {submission_id} at stage {stage} is {status}"
         formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
@@ -290,18 +315,13 @@ class AARISLogger:
         status_code: int,
         additional_info: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log API request details"""
         context = {
             "endpoint": endpoint,
             "method": method,
             "status_code": status_code,
             "component": "api_system",
         }
-        if additional_info:
-            try:
-                context.update(additional_info)
-            except Exception as e:
-                context["additional_info_error"] = f"Failed to merge additional_info: {e}"
+        context = self._merge_context(context, additional_info)
 
         message = f"{method} {endpoint} - Status: {status_code}"
         formatted = self._format_message(LogLevel.INFO, message, additional_info=context)
@@ -317,7 +337,15 @@ class AARISLogger:
 
             for file_path in targets:
                 try:
-                    with open(file_path, "w", encoding="utf-8") as f:
+                    # Security: ensure the path is within the intended log directory
+                    resolved_path = file_path.resolve()
+                    if self.log_dir not in resolved_path.parents:
+                        print(
+                            f"Skipping unsafe log clear attempt for: {file_path}", file=sys.stderr
+                        )
+                        continue
+
+                    with open(resolved_path, "w", encoding="utf-8") as f:
                         f.write("")
                 except Exception as e:
                     print(f"Failed to clear log {file_path}: {e}", file=sys.stderr)
