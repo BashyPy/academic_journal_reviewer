@@ -8,9 +8,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+import importlib
 
-
-class LogLevel(Enum):
     """Logging severity levels"""
 
     DEBUG = "DEBUG"
@@ -96,15 +95,19 @@ class AARISLogger:
         """Format the complete log message with all metadata by delegating to helpers."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         current_function, _ = self._get_caller_info()
+        # Redact message as first step
+        safe_message = _redact_string(message)
+
 
         log_msg = [
             "=" * 80,
             f"TIMESTAMP: {timestamp}",
             f"LEVEL: {level.value}",
             f"FUNCTION: {current_function}",
-            f"MESSAGE: {message}",
+            f"MESSAGE: {safe_message}",
         ]
 
+        redacted_info = None
         if error:
             log_msg.extend(self._render_error_section(error, exc_info))
 
@@ -113,9 +116,11 @@ class AARISLogger:
 
         if additional_info:
             try:
-                log_context.update(additional_info)
+                redacted_info = _deep_redact(additional_info)
+                log_context.update(redacted_info)
             except Exception as e:
-                # If merging additional_info fails, record the failure in the context instead of raising.
+        # Redact any secrets in context fields
+        log_context = _deep_redact(log_context)
                 log_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
         context_str = self._render_context(log_context)
@@ -178,7 +183,9 @@ class AARISLogger:
 
     def _write_log(self, level: LogLevel, message: str, custom_file: Optional[Path] = None) -> None:
         try:
-            log_hash = hash(message)
+            # Ensure message is redacted before hashing and writing
+            redacted_message = _redact_string(message)
+            log_hash = hash(redacted_message)
             if log_hash in self._log_cache:
                 return
         except TypeError:
@@ -190,7 +197,7 @@ class AARISLogger:
             target_file = custom_file if custom_file else self.log_files[level]
 
             with open(target_file, "a", encoding="utf-8") as f:
-                f.write(message)
+                f.write(redacted_message)
             if log_hash is not None:
                 self._log_cache.add(log_hash)
         except (IOError, PermissionError) as e:
