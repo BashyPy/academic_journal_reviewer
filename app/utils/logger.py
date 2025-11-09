@@ -2,14 +2,42 @@
 Structured logging utility for AARIS (Academic Agentic Review Intelligence System)
 """
 
+import re
 import sys
 import traceback
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
-import importlib
 
+
+def _redact_string(text: str) -> str:
+    """Redact sensitive information from strings"""
+    if not isinstance(text, str):
+        return text
+    # Redact API keys, tokens, passwords
+    patterns = [
+        (r'(api[_-]?key["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
+        (r'(token["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
+        (r'(password["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
+    ]
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _deep_redact(obj: Any) -> Any:
+    """Recursively redact sensitive information from objects"""
+    if isinstance(obj, dict):
+        return {k: _deep_redact(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_deep_redact(item) for item in obj)
+    elif isinstance(obj, str):
+        return _redact_string(obj)
+    return obj
+
+
+class LogLevel(str, Enum):
     """Logging severity levels"""
 
     DEBUG = "DEBUG"
@@ -98,7 +126,6 @@ class AARISLogger:
         # Redact message as first step
         safe_message = _redact_string(message)
 
-
         log_msg = [
             "=" * 80,
             f"TIMESTAMP: {timestamp}",
@@ -107,7 +134,6 @@ class AARISLogger:
             f"MESSAGE: {safe_message}",
         ]
 
-        redacted_info = None
         if error:
             log_msg.extend(self._render_error_section(error, exc_info))
 
@@ -119,9 +145,10 @@ class AARISLogger:
                 redacted_info = _deep_redact(additional_info)
                 log_context.update(redacted_info)
             except Exception as e:
+                log_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
+
         # Redact any secrets in context fields
         log_context = _deep_redact(log_context)
-                log_context["additional_info_error"] = f"Failed to merge additional_info: {e}"
 
         context_str = self._render_context(log_context)
 
@@ -363,9 +390,16 @@ class AARISLogger:
 
 
 # Global logger instance
-aaris_logger = AARISLogger()
+class _LoggerSingleton:
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> AARISLogger:
+        if cls._instance is None:
+            cls._instance = AARISLogger()
+        return cls._instance
 
 
 def get_logger(_name: Optional[str] = None) -> AARISLogger:
     """Get logger instance"""
-    return aaris_logger
+    return _LoggerSingleton.get_instance()
