@@ -70,3 +70,58 @@ class PasskeyRegistrationRequest(BaseModel):
 
 class PasskeyAuthenticationRequest(BaseModel):
     credential: dict
+
+
+class AuthResponse(BaseModel):
+    """Response model for authentication endpoints."""
+
+    message: str
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional[dict] = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request model for forgot password."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request model for password reset."""
+
+    token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v):
+        if not re.search(PASSWORD_REGEX_LOWERCASE, v):
+            raise ValueError(PASSWORD_ERROR_LOWERCASE)
+        if not re.search(PASSWORD_REGEX_UPPERCASE, v):
+            raise ValueError(PASSWORD_ERROR_UPPERCASE)
+        if not re.search(PASSWORD_REGEX_DIGIT, v):
+            raise ValueError(PASSWORD_ERROR_DIGIT)
+        if not re.search(PASSWORD_REGEX_SPECIAL, v):
+            raise ValueError(PASSWORD_ERROR_SPECIAL)
+        return v
+
+
+class UpdatePasswordRequest(BaseModel):
+    """Request model for updating password."""
+
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v):
+        if not re.search(PASSWORD_REGEX_LOWERCASE, v):
+            raise ValueError(PASSWORD_ERROR_LOWERCASE)
+        if not re.search(PASSWORD_REGEX_UPPERCASE, v):
+            raise ValueError(PASSWORD_ERROR_UPPERCASE)
+        if not re.search(PASSWORD_REGEX_DIGIT, v):
+            raise ValueError(PASSWORD_ERROR_DIGIT)
+        if not re.search(PASSWORD_REGEX_SPECIAL, v):
+            raise ValueError(PASSWORD_ERROR_SPECIAL)
+        return v

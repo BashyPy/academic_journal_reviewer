@@ -46,9 +46,7 @@ class EnhancedLangGraphWorkflow:  # pylint: disable=too-few-public-methods
         self.logger = get_logger()
         self.workflow = self._build_workflow()
 
-    from langgraph.graph import CompiledStateGraph  # Add this import at the top if not present
-
-    def _build_workflow(self) -> "CompiledStateGraph":
+    def _build_workflow(self):
         """Construct the StateGraph."""
         workflow = StateGraph(EnhancedReviewState)
 

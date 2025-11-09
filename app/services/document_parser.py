@@ -32,6 +32,27 @@ class DocumentParser:
                 continue
         return "\n".join(text_parts).strip()
 
+    def _extract_text_from_pdf(self, file_obj: io.BytesIO) -> str:
+        """Extract text from PDF file object"""
+        try:
+            pdf_reader = PyPDF2.PdfReader(file_obj)
+            return self._extract_text_from_pdf_pages(pdf_reader)
+        except Exception as e:
+            self.logger.error(e)
+            return ""
+
+    def _detect_file_type(self, content: bytes, filename: str) -> str:
+        """Detect file type from content and filename"""
+        if content.startswith(b"%PDF"):
+            return "pdf"
+        elif content.startswith(b"PK\x03\x04"):
+            return "docx"
+        elif filename.lower().endswith(".pdf"):
+            return "pdf"
+        elif filename.lower().endswith(".docx"):
+            return "docx"
+        return "unknown"
+
     def parse_pdf(self, file_content: bytes) -> Dict[str, Any]:
         try:
             pdf_reader = self._read_pdf(file_content)

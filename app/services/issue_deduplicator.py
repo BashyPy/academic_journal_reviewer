@@ -14,6 +14,14 @@ class IssueDeduplicator:
         """Calculate similarity between two text strings."""
         return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Alias for calculate_similarity for backward compatibility"""
+        return self.calculate_similarity(text1, text2)
+
+    def deduplicate(self, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Alias for deduplicate_issues for backward compatibility"""
+        return self.deduplicate_issues(issues)
+
     def _get_field(self, obj, field_name: str, default: Any = "") -> Any:
         if isinstance(obj, dict):
             return obj.get(field_name, default)
@@ -139,3 +147,6 @@ class IssueDeduplicator:
 
 
 issue_deduplicator = IssueDeduplicator()
+
+# Backward compatibility
+deduplicate = issue_deduplicator.deduplicate

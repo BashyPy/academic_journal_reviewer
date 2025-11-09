@@ -360,6 +360,14 @@ class DomainDetector:
         weight = float(self.domain_weights.get(domain, 0.25))
         return count * weight
 
+    def get_domain_weights(self, domain: str) -> Dict[str, float]:
+        """Alias for get_domain_specific_weights for backward compatibility"""
+        return self.get_domain_specific_weights(domain)
+
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Extract keywords from text"""
+        return re.findall(r"\w+", text.lower())
+
     def get_domain_specific_weights(self, domain: str) -> Dict[str, float]:
         domain_weights = {
             "medical": {
@@ -652,3 +660,6 @@ class DomainDetector:
 
 
 domain_detector = DomainDetector()
+
+# Backward compatibility
+get_domain_weights = domain_detector.get_domain_weights

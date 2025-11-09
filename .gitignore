@@ -50,3 +50,4 @@ run_coverage.sh
 coverage.sh
 
 commit_error.txt
+tests-backup
