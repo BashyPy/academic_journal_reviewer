@@ -26,7 +26,7 @@ async def test_otp_implementation():
         user = await user_service.create_user(
             email=test_email, password="TestPass123!", name="Test User"
         )
-        print(f"✓ User created: {user['email']}")
+        print("✓ User created successfully.")
 
         # 2. Create OTP
         print("2. Creating OTP...")
