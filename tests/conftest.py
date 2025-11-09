@@ -1,5 +1,7 @@
 """Shared test fixtures and utilities to eliminate code duplication"""
 
+import asyncio
+import os
 from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -13,12 +15,19 @@ from fastapi.security import HTTPAuthorizationCredentials
 # ============================================================================
 
 
+os.environ["TESTING"] = "true"
+os.environ["MONGODB_DATABASE"] = "aaris_test"
+
+
+TEST_EMAIL = "test@test.com"
+
+
 @pytest.fixture
 def mock_user():
     """Standard mock user for tests"""
     return {
         "user_id": "test123",
-        "email": "test@test.com",
+        "email": TEST_EMAIL,
         "name": "Test User",
         "role": "author",
         "active": True,
@@ -61,7 +70,7 @@ def mock_submission():
         "content": "Test manuscript content for analysis",
         "detected_domain": "Computer Science",
         "status": "completed",
-        "user_email": "test@test.com",
+        "user_email": TEST_EMAIL,
         "created_at": datetime.now(timezone.utc),
         "file_metadata": {"original_filename": "test.pdf", "pages": 10},
     }
@@ -75,9 +84,49 @@ def mock_pdf_file():
 
 
 @pytest.fixture
+def sample_pdf_content():
+    """Sample PDF content for testing"""
+    return b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 1\n0000000000 65535 f \ntrailer\n<<\n/Size 1\n/Root 1 0 R\n>>\nstartxref\n9\n%%EOF"
+
+
+@pytest.fixture
+def sample_docx_content():
+    """Sample DOCX content for testing"""
+    # Minimal DOCX file structure
+    return b"PK\x03\x04" + b"\x00" * 100
+
+
+@pytest.fixture
+def mock_genai_model():
+    """Mock Google Generative AI model"""
+    mock_model = Mock()
+    mock_response = Mock()
+    mock_response.text = "Test response from model"
+    mock_model.generate_content_async = AsyncMock(return_value=mock_response)
+    return mock_model
+
+
+@pytest.fixture
+def client():
+    """FastAPI test client"""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app)
+
+
+@pytest.fixture
 def mock_credentials():
     """Mock JWT credentials"""
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid_token")
+
+
+@pytest.fixture(autouse=True)
+def set_test_env(monkeypatch):
+    """Set test environment variables"""
+    monkeypatch.setenv("TESTING", "true")
+    monkeypatch.setenv("MONGODB_DATABASE", "aaris_test")
 
 
 # ============================================================================
@@ -166,10 +215,10 @@ def mock_mongodb_service():
 def mock_user_service():
     """Mock user service with standard setup"""
     with pytest.mock.patch("app.services.user_service.user_service") as mock:
-        mock.get_user_by_email = AsyncMock(return_value={"email": "test@test.com"})
+        mock.get_user_by_email = AsyncMock(return_value={"email": TEST_EMAIL})
         mock.get_user_by_api_key = AsyncMock(return_value={"api_key": "test_key"})
-        mock.create_user = AsyncMock(return_value={"email": "test@test.com"})
-        mock.authenticate_user = AsyncMock(return_value={"email": "test@test.com"})
+        mock.create_user = AsyncMock(return_value={"email": TEST_EMAIL})
+        mock.authenticate_user = AsyncMock(return_value={"email": TEST_EMAIL})
         yield mock
 
 
@@ -236,11 +285,16 @@ class AsyncTestHelper:
     """Helper class for async test operations"""
 
     @staticmethod
-    async def run_with_timeout(coro, timeout=5):
-        """Run coroutine with timeout"""
-        import asyncio
+    async def run_with_timeout(coro):
+        """Run coroutine with timeout using a context manager"""
 
-        return await asyncio.wait_for(coro, timeout=timeout)
+        try:
+            # Python 3.11+ supports asyncio.timeout context manager
+            async with asyncio.timeout(5):
+                return await coro
+        except AttributeError:
+            # Fallback for older Python versions
+            return await asyncio.wait_for(coro, timeout=5)
 
     @staticmethod
     def create_async_context_manager(return_value=None):
