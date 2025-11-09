@@ -1112,7 +1112,7 @@ Provide a synthesized review that captures the consensus and highlights any disa
                 f"Failed to calculate RAG metrics: {e}",
                 {"component": "langchain_service", "function": "get_rag_metrics"},
             )
-            return {"error": str(e), **self.rag_metrics}
+            return {"error": "Could not calculate RAG metrics.", **self.rag_metrics}
 
     def cleanup_memory(self):
         """Clean up conversation memory."""
