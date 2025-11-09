@@ -237,7 +237,7 @@ graph TD
 
 ```bash
 # Clone and setup
-git clone https://github.com/your-repo/academic-journal-reviewer.git
+git clone https://github.com/BashyPy/academic-journal-reviewer.git
 cd academic-journal-reviewer
 make setup
 
@@ -301,6 +301,7 @@ TESTING=false
 ```
 
 **Quick verification:**
+
 ```bash
 # After starting app, check:
 curl http://localhost:8000/health
@@ -323,6 +324,7 @@ curl http://localhost:8000/api/v1/system/rag-metrics
 ### 7. Run Application
 
 **Using Makefile (Recommended)**:
+
 ```bash
 make dev              # Backend only
 make dev-frontend     # Frontend only
@@ -332,6 +334,7 @@ make stop             # Stop services
 ```
 
 **Manual**:
+
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd frontend && npm install && npm start
@@ -435,6 +438,7 @@ GET /health
 ```
 
 Returns system health and RAG enablement status:
+
 ```json
 {
   "status": "healthy",
@@ -454,6 +458,7 @@ GET /api/v1/system/rag-metrics
 ```
 
 Returns RAG performance metrics:
+
 ```json
 {
   "rag_metrics": {
@@ -854,18 +859,21 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 Three critical fixes have been implemented to align actual functionality with documentation:
 
 ### 1. Vector Store Validation
+
 - ✅ Vector store validated on startup
 - ✅ Health endpoint shows RAG status
 - ✅ Detailed error messages when vector index missing
 - 📝 See: [Vector Index Setup](./docs/VECTOR_INDEX_SETUP.md)
 
 ### 2. RAG Context Monitoring
+
 - ✅ RAG retrieval success/failure tracking
 - ✅ Automatic alerts on high failure rates
 - ✅ Metrics endpoint for monitoring
 - 📊 Endpoint: `GET /api/v1/system/rag-metrics`
 
 ### 3. True Multi-Model Consensus
+
 - ✅ Uses 3 models by default (groq, openai, anthropic)
 - ✅ Synthesizes responses from multiple models
 - ✅ Graceful fallback to single model
@@ -874,18 +882,21 @@ Three critical fixes have been implemented to align actual functionality with do
 **Documentation**: See [Critical Fixes Implemented](./docs/CRITICAL_FIXES_IMPLEMENTED.md) for details.
 
 ### 4. Issue Deduplication Integration
+
 - ✅ Integrated into main synthesis workflow
 - ✅ Eliminates duplicate findings across agents
 - ✅ Prioritizes issues (major/moderate/minor)
 - 📊 Cleaner, more focused reports
 
 ### 5. Domain-Specific Weights Applied
+
 - ✅ Applied during parallel reviews (not just synthesis)
 - ✅ Medical: 40% methodology, 30% ethics
 - ✅ CS: 40% methodology, 30% clarity
 - 📊 More accurate, field-appropriate scoring
 
 ### 6. Enhanced Quality Retry Logic
+
 - ✅ 4 quality checks (was 2)
 - ✅ Line-by-line format validation
 - ✅ Score extraction validation
@@ -894,24 +905,28 @@ Three critical fixes have been implemented to align actual functionality with do
 **Documentation**: See [Important Fixes Implemented](./docs/IMPORTANT_FIXES_IMPLEMENTED.md) for details.
 
 ### 7. Persistent Memory Checkpointing
+
 - ✅ Workflow state saved to MongoDB
 - ✅ Automatic recovery on failure
 - ✅ Resume from last checkpoint
 - 📊 100% data loss prevention
 
 ### 8. Embedding Caching
+
 - ✅ Content hash-based caching (30-day TTL)
 - ✅ 98% time reduction on cache hit
 - ✅ Reduced API costs
 - 📊 ~45% cache hit rate
 
 ### 9. Enhanced RAG Metrics
+
 - ✅ Comprehensive metrics (docs, chars, timing)
 - ✅ Cache hit rate tracking
 - ✅ Average retrieval statistics
 - 📊 Endpoint: `/api/v1/system/enhancement-metrics`
 
 ### 10. Vector Store Security
+
 - ✅ PII detection and sanitization
 - ✅ User data isolation
 - ✅ Malicious content blocking
