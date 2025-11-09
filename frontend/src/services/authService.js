@@ -1,26 +1,32 @@
 import axios from 'axios';
+import CryptoJS from 'crypto-js';
 
 const API_KEY_STORAGE = 'aaris_api_key';
 const ACCESS_TOKEN_STORAGE = 'aaris_access_token';
 const USER_STORAGE = 'aaris_user';
 
 class AuthService {
-  getApiKey() {
+  // password must be provided at call time to decrypt sensitive values
+  getApiKey(password) {
     const expiry = localStorage.getItem('auth_expiry');
     if (expiry && Date.now() > parseInt(expiry)) {
       this.clearAuth();
       return null;
     }
-    return localStorage.getItem(API_KEY_STORAGE) || sessionStorage.getItem(API_KEY_STORAGE);
+    const enc = localStorage.getItem(API_KEY_STORAGE) || sessionStorage.getItem(API_KEY_STORAGE);
+    if (!enc || !password) return null;
+    return decryptData(enc, password);
   }
 
-  getAccessToken() {
+  getAccessToken(password) {
     const expiry = localStorage.getItem('auth_expiry');
     if (expiry && Date.now() > parseInt(expiry)) {
       this.clearAuth();
       return null;
     }
-    return localStorage.getItem(ACCESS_TOKEN_STORAGE) || sessionStorage.getItem(ACCESS_TOKEN_STORAGE);
+    const enc = localStorage.getItem(ACCESS_TOKEN_STORAGE) || sessionStorage.getItem(ACCESS_TOKEN_STORAGE);
+    if (!enc || !password) return null;
+    return decryptData(enc, password);
   }
 
   getUser() {
@@ -28,11 +34,15 @@ class AuthService {
     return user ? JSON.parse(user) : null;
   }
 
-  setAuth(apiKey, user, rememberMe = false, accessToken = null) {
+  // password must be provided at call time to encrypt sensitive values
+  setAuth(apiKey, user, rememberMe = false, accessToken = null, password) {
     const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem(API_KEY_STORAGE, apiKey);
+    if (!password) {
+      throw new Error("Password needed to encrypt apiKey/accessToken.");
+    }
+    storage.setItem(API_KEY_STORAGE, encryptData(apiKey, password));
     if (accessToken) {
-      storage.setItem(ACCESS_TOKEN_STORAGE, accessToken);
+      storage.setItem(ACCESS_TOKEN_STORAGE, encryptData(accessToken, password));
     }
     storage.setItem(USER_STORAGE, JSON.stringify(user));
     if (rememberMe) {
@@ -71,7 +81,7 @@ class AuthService {
   async login(emailOrUsername, password, rememberMe = false) {
     const response = await axios.post('/api/v1/auth/login', { email_or_username: emailOrUsername, password });
     const { api_key, access_token, user } = response.data;
-    this.setAuth(api_key, user, rememberMe, access_token);
+    this.setAuth(api_key, user, rememberMe, access_token, password);
     return response.data;
   }
 
