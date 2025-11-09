@@ -10,6 +10,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+REDACTED_REPLACEMENT = r"\1<REDACTED>"
+
 
 def _redact_string(text: str) -> str:
     """Redact sensitive information from strings"""
@@ -17,9 +19,9 @@ def _redact_string(text: str) -> str:
         return text
     # Redact API keys, tokens, passwords
     patterns = [
-        (r'(api[_-]?key["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
-        (r'(token["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
-        (r'(password["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', r"\1<REDACTED>"),
+        (r'(api[_-]?key["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', REDACTED_REPLACEMENT),
+        (r'(token["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', REDACTED_REPLACEMENT),
+        (r'(password["\']?\s*[:=]\s*["\']?)([^"\'\ ]+)', REDACTED_REPLACEMENT),
     ]
     for pattern, replacement in patterns:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
