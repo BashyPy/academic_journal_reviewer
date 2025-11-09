@@ -41,3 +41,15 @@ pbr==7.0.3
 mypy
 pylint==4.0.2
 flake8
+
+# Security fixes - Updated to address pip-audit vulnerabilities
+certifi>=2024.7.4
+configobj>=5.0.9
+cryptography>=43.0.1
+idna>=3.7
+jinja2>=3.1.6
+pip>=25.3
+requests>=2.32.4
+setuptools>=78.1.1
+twisted>=24.7.0
+urllib3>=2.5.0
